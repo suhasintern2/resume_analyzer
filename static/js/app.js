@@ -145,6 +145,10 @@ function renderResults(result) {
     resultName.textContent = escapeHtml(result.candidate_name);
     resultSummary.textContent = escapeHtml(result.summary);
 
+    const CATEGORY_ORDER = [
+        'Basic Technical', 'Resume Skills', 'Project', 'Experience', 'DSA'
+    ];
+
     const categories = {};
     for (const q of result.questions) {
         const cat = q.category;
@@ -152,8 +156,14 @@ function renderResults(result) {
         categories[cat].push(q);
     }
 
+    const orderedCats = Object.entries(categories).sort((a, b) => {
+        const ia = CATEGORY_ORDER.indexOf(a[0]);
+        const ib = CATEGORY_ORDER.indexOf(b[0]);
+        return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+    });
+
     let html = '';
-    for (const [catName, questions] of Object.entries(categories)) {
+    for (const [catName, questions] of orderedCats) {
         html += `<div class="category-section">`;
         html += `<h3 class="category-title">${escapeHtml(catName.toUpperCase())} QUESTIONS</h3>`;
         for (const q of questions) {

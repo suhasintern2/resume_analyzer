@@ -10,6 +10,14 @@ class Settings:
     LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "gemini")
     LLM_API_KEY: str = os.getenv("LLM_API_KEY", "")
     LLM_MODEL: str = os.getenv("LLM_MODEL", "gemini-3.5-flash")
+    LLM_FALLBACK_MODELS: list[str] = [
+        m.strip()
+        for m in os.getenv(
+            "LLM_FALLBACK_MODELS",
+            "gemini-3.5-flash-lite,gemini-3.1-flash-lite,gemini-3.6-flash",
+        ).split(",")
+        if m.strip()
+    ]
 
     MAX_FILE_SIZE_MB: int = int(os.getenv("MAX_FILE_SIZE_MB", "10"))
     MAX_RESUME_CHARACTERS: int = int(os.getenv("MAX_RESUME_CHARACTERS", "50000"))

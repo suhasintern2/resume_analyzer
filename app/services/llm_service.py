@@ -79,6 +79,7 @@ class GeminiProvider(LLMProvider):
     def __init__(self):
         self.api_key = settings.LLM_API_KEY
         self.model = settings.LLM_MODEL
+        self.fallback_models = settings.LLM_FALLBACK_MODELS
         self.base_url = "https://generativelanguage.googleapis.com/v1beta"
 
     def _build_payload(self, user_content: str, system_instruction: str = None) -> dict:
@@ -92,8 +93,8 @@ class GeminiProvider(LLMProvider):
             payload["systemInstruction"] = {"parts": [{"text": system_instruction}]}
         return payload
 
-    def _call_api(self, payload: dict) -> str:
-        url = f"{self.base_url}/models/{self.model}:generateContent?key={self.api_key}"
+    def _call_api(self, payload: dict, model: str) -> str:
+        url = f"{self.base_url}/models/{model}:generateContent?key={self.api_key}"
         with httpx.Client(timeout=settings.LLM_TIMEOUT) as client:
             response = client.post(url, json=payload)
             response.raise_for_status()
@@ -111,25 +112,40 @@ class GeminiProvider(LLMProvider):
         return InterviewResult(**data)
 
     def generate_interview_qa(self, resume_text: str) -> InterviewResult:
-        payload = self._build_payload(
-            user_content=build_user_prompt(resume_text),
-            system_instruction=SYSTEM_PROMPT,
-        )
-        response_text = self._call_api(payload)
-        return self._parse_response(response_text)
+        return self._try_models(resume_text)
+
+    def _try_models(self, resume_text: str) -> InterviewResult:
+        models = [self.model] + [m for m in self.fallback_models if m != self.model]
+        errors = []
+
+        for model in models:
+            try:
+                payload = self._build_payload(
+                    user_content=build_user_prompt(resume_text),
+                    system_instruction=SYSTEM_PROMPT,
+                )
+                response_text = self._call_api(payload, model)
+                return self._parse_response(response_text)
+            except (json.JSONDecodeError, httpx.HTTPError, KeyError, ValueError) as e:
+                errors.append(f"{model}: {e}")
+                logger.warning(f"Model {model} failed: {e}, trying next model...")
+
+                if model != models[-1]:
+                    try:
+                        payload = self._build_payload(
+                            user_content=build_user_prompt(resume_text),
+                            system_instruction=SYSTEM_PROMPT + RETRY_PROMPT_SUFFIX,
+                        )
+                        response_text = self._call_api(payload, model)
+                        return self._parse_response(response_text)
+                    except Exception as retry_e:
+                        errors.append(f"{model} (retry): {retry_e}")
+                        logger.warning(f"Retry on {model} failed: {retry_e}")
+
+        raise RuntimeError(f"All LLM models failed: {'; '.join(errors)}")
 
     def generate_with_retry(self, resume_text: str) -> InterviewResult:
-        try:
-            return self.generate_interview_qa(resume_text)
-        except (json.JSONDecodeError, Exception) as e:
-            logger.warning(f"First LLM attempt failed: {e}, retrying...")
-            retry_prompt = SYSTEM_PROMPT + RETRY_PROMPT_SUFFIX
-            payload = self._build_payload(
-                user_content=build_user_prompt(resume_text),
-                system_instruction=retry_prompt,
-            )
-            response_text = self._call_api(payload)
-            return self._parse_response(response_text)
+        return self._try_models(resume_text)
 
 
 def get_llm_provider() -> LLMProvider:

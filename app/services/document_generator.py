@@ -34,6 +34,10 @@ def generate_docx(result: InterviewResult) -> bytes:
 
     doc.add_paragraph()
 
+    CATEGORY_ORDER = [
+        "Basic Technical", "Resume Skills", "Project", "Experience", "DSA"
+    ]
+
     categories = {}
     for q in result.questions:
         cat = q.category
@@ -41,7 +45,12 @@ def generate_docx(result: InterviewResult) -> bytes:
             categories[cat] = []
         categories[cat].append(q)
 
-    for cat_name, questions in categories.items():
+    ordered = sorted(
+        categories.items(),
+        key=lambda x: CATEGORY_ORDER.index(x[0]) if x[0] in CATEGORY_ORDER else 99,
+    )
+
+    for cat_name, questions in ordered:
         doc.add_heading(f"{cat_name.upper()} QUESTIONS", level=2)
 
         for q in questions:
