@@ -2598,3 +2598,4 @@ Do not introduce a database unless persistence becomes an actual requirement.
 Do not build a full recruitment platform.
 
 Build the smallest reliable system that produces **high-quality, resume-specific interview Q&A**.
+yes
