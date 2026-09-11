@@ -1,6 +1,8 @@
-import fitz
+import logging
+import pymupdf as fitz
 from app.services.ocr_service import ocr_pdf
 
+logger = logging.getLogger(__name__)
 
 MIN_EXTRACTED_TEXT_LENGTH = 200
 
@@ -20,8 +22,11 @@ def extract_pdf_text(file_path: str) -> str:
     full_text = "\n\n".join(text_parts)
 
     if len(full_text.strip()) < MIN_EXTRACTED_TEXT_LENGTH:
-        ocr_text = ocr_pdf(file_path)
-        if len(ocr_text.strip()) > len(full_text.strip()):
-            return ocr_text
+        try:
+            ocr_text = ocr_pdf(file_path)
+            if len(ocr_text.strip()) > len(full_text.strip()):
+                return ocr_text
+        except Exception as e:
+            logger.warning(f"PDF OCR fallback failed (using extracted text): {e}")
 
     return full_text

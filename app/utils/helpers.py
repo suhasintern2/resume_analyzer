@@ -1,5 +1,6 @@
 import os
 import uuid
+import tempfile
 from app.config import settings
 
 
@@ -8,9 +9,9 @@ def generate_safe_filename(extension: str) -> str:
 
 
 def get_upload_path(extension: str) -> str:
-    os.makedirs("uploads", exist_ok=True)
+    temp_dir = tempfile.gettempdir()
     filename = generate_safe_filename(extension)
-    return os.path.join("uploads", filename)
+    return os.path.join(temp_dir, filename)
 
 
 def validate_resume_text(text: str) -> bool:

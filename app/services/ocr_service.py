@@ -1,10 +1,28 @@
 import io
 import logging
-import fitz
+import pymupdf as fitz
 from PIL import Image
-import pytesseract
+
+try:
+    import pytesseract
+    TESSERACT_AVAILABLE = True
+except ImportError:
+    pytesseract = None
+    TESSERACT_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
+
+
+def _get_tesseract():
+    if not TESSERACT_AVAILABLE:
+        raise RuntimeError("OCR is not available: pytesseract is not installed.")
+    try:
+        import shutil
+        if shutil.which("tesseract") is None:
+            raise RuntimeError("OCR is not available: tesseract binary not found.")
+    except Exception as e:
+        raise RuntimeError(f"OCR is not available: {e}")
+    return pytesseract
 
 
 def preprocess_image(image: Image.Image) -> Image.Image:
@@ -18,9 +36,10 @@ def preprocess_image(image: Image.Image) -> Image.Image:
 
 def ocr_image(image_bytes: bytes) -> str:
     try:
+        tesseract = _get_tesseract()
         image = Image.open(io.BytesIO(image_bytes))
         processed = preprocess_image(image)
-        text = pytesseract.image_to_string(processed)
+        text = tesseract.image_to_string(processed)
         return text
     except Exception as e:
         logger.error(f"OCR failed: {e}")
@@ -29,6 +48,7 @@ def ocr_image(image_bytes: bytes) -> str:
 
 def ocr_pdf(file_path: str) -> str:
     try:
+        tesseract = _get_tesseract()
         doc = fitz.open(file_path)
         all_text = []
 
@@ -37,7 +57,7 @@ def ocr_pdf(file_path: str) -> str:
             pix = page.get_pixmap(dpi=300)
             img = Image.open(io.BytesIO(pix.tobytes("png")))
             processed = preprocess_image(img)
-            text = pytesseract.image_to_string(processed)
+            text = tesseract.image_to_string(processed)
             if text.strip():
                 all_text.append(text.strip())
 

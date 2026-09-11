@@ -1,7 +1,6 @@
 import os
 import time
 import logging
-import uuid
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from app.utils.file_validation import validate_file
 from app.utils.helpers import get_upload_path, validate_resume_text, truncate_resume_text
@@ -37,12 +36,18 @@ async def generate(file: UploadFile = File(...)):
         with open(temp_path, "wb") as f:
             f.write(content)
 
-        if ext == ".pdf":
-            extracted_text = extract_pdf_text(temp_path)
-        elif ext in (".jpg", ".jpeg", ".png"):
-            extracted_text = ocr_image(content)
-        else:
-            raise HTTPException(status_code=400, detail="Unsupported file type.")
+        try:
+            if ext == ".pdf":
+                extracted_text = extract_pdf_text(temp_path)
+            elif ext in (".jpg", ".jpeg", ".png"):
+                extracted_text = ocr_image(content)
+            else:
+                raise HTTPException(status_code=400, detail="Unsupported file type.")
+        except RuntimeError as e:
+            raise HTTPException(
+                status_code=422,
+                detail="We could not read the uploaded file. Please upload a clear, text-based PDF or a clearer image.",
+            )
 
         cleaned_text = clean_resume_text(extracted_text)
         logger.info(f"Extracted {len(cleaned_text)} characters")

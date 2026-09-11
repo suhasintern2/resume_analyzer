@@ -1,5 +1,5 @@
 const ALLOWED_EXTENSIONS = ['pdf', 'jpg', 'jpeg', 'png'];
-const MAX_SIZE_MB = 10;
+const MAX_SIZE_MB = 4;
 const MAX_SIZE_BYTES = MAX_SIZE_MB * 1024 * 1024;
 
 const fileInput = document.getElementById('file-input');
