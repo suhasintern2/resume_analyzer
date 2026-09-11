@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Resume Interview Q&A Generator</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Resume Interview Q&A Generator</h1>
+            <p class="subtitle">Upload a resume and generate personalized interview questions and sample answers.</p>
+        </header>
+
+        <main>
+            <!-- Upload Section -->
+            <section id="upload-section" class="card">
+                <div class="upload-area" id="upload-area">
+                    <div class="upload-icon">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                            <polyline points="17 8 12 3 7 8"/>
+                            <line x1="12" y1="3" x2="12" y2="15"/>
+                        </svg>
+                    </div>
+                    <h2>Upload Resume</h2>
+                    <p>PDF, JPG, JPEG or PNG</p>
+                    <p class="small">Maximum size: 10 MB</p>
+                    <input type="file" id="file-input" accept=".pdf,.jpg,.jpeg,.png" hidden>
+                    <button class="btn btn-outline" id="choose-btn">Choose File</button>
+                </div>
+
+                <div class="file-info hidden" id="file-info">
+                    <p>Selected file: <strong id="file-name"></strong></p>
+                    <button class="btn btn-primary" id="generate-btn">Generate Interview Q&A</button>
+                    <button class="btn btn-outline btn-small" id="change-file-btn">Change File</button>
+                </div>
+
+                <div class="error-message hidden" id="error-message"></div>
+            </section>
+
+            <!-- Loading Section -->
+            <section id="loading-section" class="card hidden">
+                <h2>Analyzing Resume...</h2>
+                <div class="steps">
+                    <div class="step completed" id="step-upload">
+                        <span class="step-icon">&#10003;</span>
+                        <span>Resume uploaded</span>
+                    </div>
+                    <div class="step completed" id="step-extract">
+                        <span class="step-icon">&#10003;</span>
+                        <span>Extracting resume text</span>
+                    </div>
+                    <div class="step active" id="step-generate">
+                        <span class="step-icon">&bull;</span>
+                        <span>Generating personalized questions...</span>
+                    </div>
+                    <div class="step" id="step-format">
+                        <span class="step-icon">&#9675;</span>
+                        <span>Formatting results</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Result Section -->
+            <section id="result-section" class="card hidden">
+                <h2>Interview Questions & Answers</h2>
+
+                <div class="result-header">
+                    <p><strong>Candidate:</strong> <span id="result-name"></span></p>
+                    <div class="result-summary">
+                        <strong>Profile Summary:</strong>
+                        <p id="result-summary"></p>
+                    </div>
+                </div>
+
+                <div id="result-questions"></div>
+
+                <div class="result-actions">
+                    <button class="btn btn-outline" id="generate-again-btn">Generate Again</button>
+                    <button class="btn btn-primary" id="download-docx-btn">Download DOCX</button>
+                    <button class="btn btn-outline" id="print-btn">Print / Save as PDF</button>
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <p>Resume Interview Q&A Generator</p>
+        </footer>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
