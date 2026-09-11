@@ -6,6 +6,5 @@ pydantic
 python-dotenv
 pymupdf
 pillow
-pytesseract
 python-docx
 httpx

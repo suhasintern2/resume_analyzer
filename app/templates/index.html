@@ -2,15 +2,19 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Resume Interview Q&A Generator</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Vlookup Resume Analyzer</title>
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
     <div class="container">
         <header>
-            <h1>Resume Interview Q&A Generator</h1>
-            <p class="subtitle">Upload a resume and generate personalized interview questions and sample answers.</p>
+            <div class="header-logo">
+                <img id="brand-logo" src="/static/img/vlookup-logo.png" alt="Vlookup Logo"
+                     onerror="this.style.display='none'">
+                <h1>Vlookup Resume Analyzer</h1>
+            </div>
+            <p class="subtitle">Upload or capture a resume and get personalized interview questions &amp; sample answers.</p>
         </header>
 
         <main>
@@ -27,14 +31,35 @@
                     <h2>Upload Resume</h2>
                     <p>PDF, JPG, JPEG or PNG</p>
                     <p class="small">Maximum size: 4 MB</p>
+
                     <input type="file" id="file-input" accept=".pdf,.jpg,.jpeg,.png" hidden>
-                    <button class="btn btn-outline" id="choose-btn">Choose File</button>
+                    <input type="file" id="camera-input" accept="image/jpeg,image/png" capture="environment" hidden>
+
+                    <div class="upload-actions">
+                        <button class="btn btn-primary" id="choose-btn">
+                            <svg class="btn-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                                <polyline points="17 8 12 3 7 8"/>
+                                <line x1="12" y1="3" x2="12" y2="15"/>
+                            </svg>
+                            Upload
+                        </button>
+                        <button class="btn btn-outline" id="camera-btn">
+                            <svg class="btn-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/>
+                                <circle cx="12" cy="13" r="4"/>
+                            </svg>
+                            Open Camera
+                        </button>
+                    </div>
                 </div>
 
                 <div class="file-info hidden" id="file-info">
                     <p>Selected file: <strong id="file-name"></strong></p>
-                    <button class="btn btn-primary" id="generate-btn">Generate Interview Q&A</button>
-                    <button class="btn btn-outline btn-small" id="change-file-btn">Change File</button>
+                    <div class="file-actions">
+                        <button class="btn btn-primary" id="generate-btn">Generate Interview Q&amp;A</button>
+                        <button class="btn btn-outline btn-small" id="change-file-btn">Change</button>
+                    </div>
                 </div>
 
                 <div class="error-message hidden" id="error-message"></div>
@@ -48,9 +73,9 @@
                         <span class="step-icon">&#10003;</span>
                         <span>Resume uploaded</span>
                     </div>
-                    <div class="step completed" id="step-extract">
-                        <span class="step-icon">&#10003;</span>
-                        <span>Extracting resume text</span>
+                    <div class="step active" id="step-extract">
+                        <span class="step-icon">&bull;</span>
+                        <span>Reading resume content</span>
                     </div>
                     <div class="step active" id="step-generate">
                         <span class="step-icon">&bull;</span>
@@ -65,7 +90,7 @@
 
             <!-- Result Section -->
             <section id="result-section" class="card hidden">
-                <h2>Interview Questions & Answers</h2>
+                <h2>Interview Questions &amp; Answers</h2>
 
                 <div class="result-header">
                     <p><strong>Candidate:</strong> <span id="result-name"></span></p>
@@ -86,7 +111,7 @@
         </main>
 
         <footer>
-            <p>Resume Interview Q&A Generator</p>
+            <p>Vlookup Resume Analyzer</p>
         </footer>
     </div>
 

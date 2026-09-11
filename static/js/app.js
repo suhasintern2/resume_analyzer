@@ -3,7 +3,9 @@ const MAX_SIZE_MB = 4;
 const MAX_SIZE_BYTES = MAX_SIZE_MB * 1024 * 1024;
 
 const fileInput = document.getElementById('file-input');
+const cameraInput = document.getElementById('camera-input');
 const chooseBtn = document.getElementById('choose-btn');
+const cameraBtn = document.getElementById('camera-btn');
 const uploadArea = document.getElementById('upload-area');
 const fileInfo = document.getElementById('file-info');
 const fileName = document.getElementById('file-name');
@@ -33,8 +35,15 @@ function hideError() {
 }
 
 function validateFile(file) {
-    const ext = file.name.split('.').pop().toLowerCase();
-    if (!ALLOWED_EXTENSIONS.includes(ext)) {
+    const ext = (file.name.split('.').pop() || '').toLowerCase();
+    const type = (file.type || '').toLowerCase();
+
+    let valid = ALLOWED_EXTENSIONS.includes(ext);
+    if (!valid && (type === 'image/jpeg' || type === 'image/png')) {
+        valid = true;
+    }
+
+    if (!valid) {
         showError('Please upload a PDF, JPG, JPEG, or PNG file.');
         return false;
     }
@@ -43,6 +52,26 @@ function validateFile(file) {
         return false;
     }
     return true;
+}
+
+function normalizeFileName(file) {
+    const type = (file.type || '').toLowerCase();
+    if (!file.name || !file.name.includes('.')) {
+        if (type === 'image/png') return 'camera_capture.png';
+        if (type === 'image/jpeg' || type === 'image/jpg') return 'camera_capture.jpg';
+        return 'capture.pdf';
+    }
+    return file.name;
+}
+
+function handleFileSelect(file) {
+    hideError();
+    if (!validateFile(file)) return;
+    const normalizedName = normalizeFileName(file);
+    selectedFile = new File([file], normalizedName, { type: file.type });
+    fileName.textContent = normalizedName;
+    uploadArea.classList.add('hidden');
+    fileInfo.classList.remove('hidden');
 }
 
 chooseBtn.addEventListener('click', () => fileInput.click());
@@ -75,18 +104,18 @@ fileInput.addEventListener('change', () => {
     }
 });
 
-function handleFileSelect(file) {
-    hideError();
-    if (!validateFile(file)) return;
-    selectedFile = file;
-    fileName.textContent = file.name;
-    uploadArea.classList.add('hidden');
-    fileInfo.classList.remove('hidden');
-}
+cameraBtn.addEventListener('click', () => cameraInput.click());
+
+cameraInput.addEventListener('change', () => {
+    if (cameraInput.files.length > 0) {
+        handleFileSelect(cameraInput.files[0]);
+    }
+});
 
 changeFileBtn.addEventListener('click', () => {
     selectedFile = null;
     fileInput.value = '';
+    cameraInput.value = '';
     fileInfo.classList.add('hidden');
     uploadArea.classList.remove('hidden');
     hideError();
@@ -188,6 +217,7 @@ generateAgainBtn.addEventListener('click', () => {
     fileInfo.classList.add('hidden');
     selectedFile = null;
     fileInput.value = '';
+    cameraInput.value = '';
     lastResult = null;
     generateBtn.disabled = false;
 });

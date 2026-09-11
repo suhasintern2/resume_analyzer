@@ -43,7 +43,10 @@ async def generate(file: UploadFile = File(...)):
                 extracted_text = ocr_image(content)
             else:
                 raise HTTPException(status_code=400, detail="Unsupported file type.")
-        except RuntimeError as e:
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.warning(f"Text extraction failed for {ext}: {e}")
             raise HTTPException(
                 status_code=422,
                 detail="We could not read the uploaded file. Please upload a clear, text-based PDF or a clearer image.",

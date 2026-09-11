@@ -19,7 +19,22 @@ body {
 
 header {
     text-align: center;
-    padding: 40px 0 20px;
+    padding: 32px 0 20px;
+}
+
+.header-logo {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+#brand-logo {
+    height: 56px;
+    width: auto;
+    max-width: 220px;
+    object-fit: contain;
 }
 
 header h1 {
@@ -74,7 +89,38 @@ header h1 {
 .upload-area .small {
     font-size: 0.8rem;
     color: #999;
-    margin-bottom: 16px;
+    margin-bottom: 20px;
+}
+
+/* Upload / Camera actions */
+.upload-actions {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.btn-icon {
+    vertical-align: middle;
+    margin-right: 6px;
+}
+
+.file-actions {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.file-actions .btn {
+    margin: 4px;
+}
+
+/* Header logo row on smaller widths */
+@media (max-width: 600px) {
+    .header-logo {
+        flex-direction: column;
+    }
 }
 
 /* File Info */
@@ -302,16 +348,55 @@ footer {
         padding: 12px;
     }
 
+    header {
+        padding: 20px 0 16px;
+    }
+
+    #brand-logo {
+        height: 48px;
+    }
+
     header h1 {
-        font-size: 1.4rem;
+        font-size: 1.35rem;
+    }
+
+    .subtitle {
+        font-size: 0.9rem;
+        padding: 0 8px;
     }
 
     .card {
-        padding: 20px;
+        padding: 20px 16px;
     }
 
     .upload-area {
-        padding: 32px 16px;
+        padding: 28px 12px;
+    }
+
+    .upload-area h2 {
+        font-size: 1.1rem;
+    }
+
+    .upload-actions,
+    .file-actions {
+        flex-direction: column;
+    }
+
+    .upload-actions .btn,
+    .file-actions .btn {
+        width: 100%;
+        text-align: center;
+        justify-content: center;
+        padding: 14px 12px;
+        font-size: 1rem;
+    }
+
+    .file-actions .btn-small {
+        margin-left: 0;
+    }
+
+    .btn {
+        padding: 13px 20px;
     }
 
     .result-actions {
@@ -321,5 +406,19 @@ footer {
     .result-actions .btn {
         width: 100%;
         text-align: center;
+    }
+
+    .question-block {
+        padding: 12px;
+    }
+
+    .category-title {
+        font-size: 1rem;
+    }
+}
+
+@media (min-width: 601px) {
+    .upload-area {
+        padding: 48px 24px;
     }
 }
