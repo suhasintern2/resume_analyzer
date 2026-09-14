@@ -5,7 +5,10 @@ class QuestionAnswer(BaseModel):
     number: int
     category: str
     question: str
+    options: list[str] | None = None
+    correct_option: str | None = None
     answer: str
+    hr_answer: str | None = None
 
 
 class InterviewResult(BaseModel):

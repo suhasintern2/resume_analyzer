@@ -38,7 +38,11 @@ def test_reject_empty_file():
 def test_generate_with_valid_pdf():
     import fitz
 
-    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+    tmp = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False)
+    tmp_path = tmp.name
+    tmp.close()
+
+    try:
         doc = fitz.open()
         page = doc.new_page()
         page.insert_text(
@@ -47,18 +51,43 @@ def test_generate_with_valid_pdf():
             "Experience: Software Developer at TechCorp (2020-2023)\n"
             "Projects: E-commerce Platform using Django and React",
         )
-        doc.save(tmp.name)
+        doc.save(tmp_path)
         doc.close()
 
-        try:
-            with open(tmp.name, "rb") as f:
-                response = client.post(
-                    "/api/generate",
-                    files={"file": ("resume.pdf", f, "application/pdf")},
-                )
-            assert response.status_code == 200
-            data = response.json()
-            assert data["success"] is True
-            assert "result" in data
-        finally:
-            os.remove(tmp.name)
+        with open(tmp_path, "rb") as f:
+            response = client.post(
+                "/api/generate",
+                files={"file": ("resume.pdf", f, "application/pdf")},
+            )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert "result" in data
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+
+
+def test_download_docx_all_roles():
+    payload = {
+        "candidate_name": "Test Candidate",
+        "summary": "Full Stack developer",
+        "questions": [
+            {
+                "number": 1,
+                "category": "MCQ",
+                "question": "Which database is document-based?",
+                "options": ["A) MongoDB", "B) PostgreSQL", "C) SQLite", "D) Redis"],
+                "correct_option": "A",
+                "answer": "MongoDB stores data in flexible, JSON-like BSON documents.",
+                "hr_answer": "MongoDB is a document database."
+            }
+        ]
+    }
+
+    for role in ["interviewer", "hr", "candidate"]:
+        response = client.post(f"/api/download/docx?role={role}", json=payload)
+        assert response.status_code == 200
+        assert "application/vnd.openxmlformats-officedocument.wordprocessingml.document" in response.headers["content-type"]
+        assert len(response.content) > 1000
+

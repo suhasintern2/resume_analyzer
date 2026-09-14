@@ -87,16 +87,25 @@ async def generate(file: UploadFile = File(...)):
 
 
 @router.post("/download/docx")
-async def download_docx(result: InterviewResult):
+async def download_docx(result: InterviewResult, role: str = "interviewer"):
     try:
-        docx_bytes = generate_docx(result)
+        docx_bytes = generate_docx(result, role=role)
+
+        role_filenames = {
+            "interviewer": "Interviewer_Technical_Guide",
+            "hr": "HR_Recruiter_Guide",
+            "candidate": "Candidate_Assessment_Sheet",
+        }
+        prefix = role_filenames.get(role, "Interview_Prep")
+        safe_name = "".join(c for c in result.candidate_name if c.isalnum() or c in (" ", "_", "-")).replace(" ", "_")
+        filename = f"VlookUp_{prefix}_{safe_name}.docx"
 
         from fastapi.responses import Response
         return Response(
             content=docx_bytes,
             media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             headers={
-                "Content-Disposition": f'attachment; filename="interview_prep_{result.candidate_name.replace(" ", "_")}.docx"'
+                "Content-Disposition": f'attachment; filename="{filename}"'
             },
         )
     except Exception as e:

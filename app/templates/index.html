@@ -3,117 +3,417 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>Vlookup Resume Analyzer</title>
+    <title>VlookUp | Intelligent Resume & Interview Analyzer</title>
+    <meta name="description" content="Professional candidate evaluation and personalized interview preparation kit by VlookUp Business Solutions.">
+    <!-- Google Fonts: Plus Jakarta Sans -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
-    <div class="container">
-        <header>
-            <div class="header-logo">
-                <img id="brand-logo" src="/static/img/vlookup-logo.png" alt="Vlookup Logo"
-                     onerror="this.style.display='none'">
-                <h1>Vlookup Resume Analyzer</h1>
+    <!-- Top Enterprise Navbar -->
+    <header class="app-header">
+        <div class="nav-container">
+            <div class="brand-block">
+                <img id="brand-logo" src="/static/img/vlookup-logo.png" alt="VlookUp Business Solutions" onerror="this.style.display='none'">
+                <div class="brand-divider"></div>
+                <div class="brand-meta">
+                    <span class="brand-app-name">Resume Analyzer</span>
+                    <span class="brand-tagline">Interview Intelligence Studio</span>
+                </div>
             </div>
-            <p class="subtitle">Upload or capture a resume and get personalized interview questions &amp; sample answers.</p>
-        </header>
+            <div class="header-status-badge">
+                <span class="status-dot"></span>
+                <span>Talent Evaluation Ready</span>
+            </div>
+        </div>
+    </header>
 
-        <main>
-            <!-- Upload Section -->
-            <section id="upload-section" class="card">
-                <div class="upload-area" id="upload-area">
-                    <div class="upload-icon">
-                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+    <div class="app-layout">
+        <!-- Intro Hero Banner -->
+        <section class="hero-banner" id="hero-banner">
+            <div class="hero-content">
+                <span class="hero-pill">Candidate Assessment Engine</span>
+                <h1 class="hero-title">Transform Resumes into Targeted Interview Preparation Kits</h1>
+                <p class="hero-subtitle">Upload or scan any developer resume to instantly extract technical depth, generate contextual questions across 5 core dimensions, and review recommended talking points.</p>
+            </div>
+        </section>
+
+        <main class="main-content">
+            <!-- 1. Upload Section -->
+            <section id="upload-section" class="card upload-card">
+                <div class="upload-dropzone" id="upload-area">
+                    <div class="dropzone-icon-wrap">
+                        <svg class="dropzone-icon" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
                             <polyline points="17 8 12 3 7 8"/>
                             <line x1="12" y1="3" x2="12" y2="15"/>
                         </svg>
                     </div>
-                    <h2>Upload Resume</h2>
-                    <p>PDF, JPG, JPEG or PNG</p>
-                    <p class="small">Maximum size: 4 MB</p>
+                    <div class="dropzone-text">
+                        <h2 class="dropzone-heading">Select or Drop Resume Document</h2>
+                        <p class="dropzone-sub">Upload candidate resume as PDF or capture a photo/scanned copy</p>
+                    </div>
+
+                    <div class="dropzone-badges">
+                        <span class="format-badge">PDF</span>
+                        <span class="format-badge">PNG</span>
+                        <span class="format-badge">JPG / JPEG</span>
+                        <span class="format-badge limit-badge">Max 4 MB</span>
+                    </div>
 
                     <input type="file" id="file-input" accept=".pdf,.jpg,.jpeg,.png" hidden>
                     <input type="file" id="camera-input" accept="image/jpeg,image/png" capture="environment" hidden>
 
-                    <div class="upload-actions">
-                        <button class="btn btn-primary" id="choose-btn">
-                            <svg class="btn-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                    <div class="dropzone-actions" onclick="event.stopPropagation()">
+                        <button type="button" class="btn btn-primary" id="choose-btn">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
                                 <polyline points="17 8 12 3 7 8"/>
                                 <line x1="12" y1="3" x2="12" y2="15"/>
                             </svg>
-                            Upload
+                            Browse Files
                         </button>
-                        <button class="btn btn-outline" id="camera-btn">
-                            <svg class="btn-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/>
+                        <button type="button" class="btn btn-secondary" id="camera-btn">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
                                 <circle cx="12" cy="13" r="4"/>
                             </svg>
-                            Open Camera
+                            Capture via Camera
                         </button>
                     </div>
                 </div>
 
-                <div class="file-info hidden" id="file-info">
-                    <p>Selected file: <strong id="file-name"></strong></p>
-                    <div class="file-actions">
-                        <button class="btn btn-primary" id="generate-btn">Generate Interview Q&amp;A</button>
-                        <button class="btn btn-outline btn-small" id="change-file-btn">Change</button>
+                <!-- Selected File Display -->
+                <div class="file-preview-card hidden" id="file-info">
+                    <div class="file-preview-left">
+                        <div class="file-type-icon" id="file-type-icon">
+                            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                                <polyline points="14 2 14 8 20 8"/>
+                                <line x1="16" y1="13" x2="8" y2="13"/>
+                                <line x1="16" y1="17" x2="8" y2="17"/>
+                                <polyline points="10 9 9 9 8 9"/>
+                            </svg>
+                        </div>
+                        <div class="file-meta">
+                            <span class="file-label">Ready for Analysis</span>
+                            <div class="file-name-row">
+                                <strong id="file-name">filename.pdf</strong>
+                                <span class="file-size" id="file-size">120 KB</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="file-preview-actions">
+                        <button type="button" class="btn btn-primary btn-generate" id="generate-btn">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+                            </svg>
+                            Generate Interview Q&amp;A
+                        </button>
+                        <button type="button" class="btn btn-ghost" id="change-file-btn" title="Choose another file">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M3 6h18"/>
+                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/>
+                                <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                            </svg>
+                            Remove
+                        </button>
                     </div>
                 </div>
 
-                <div class="error-message hidden" id="error-message"></div>
+                <!-- Error Toast / Box -->
+                <div class="alert-box error-alert hidden" id="error-message">
+                    <svg class="alert-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10"/>
+                        <line x1="12" y1="8" x2="12" y2="12"/>
+                        <line x1="12" y1="16" x2="12.01" y2="16"/>
+                    </svg>
+                    <div class="alert-content" id="error-text"></div>
+                </div>
             </section>
 
-            <!-- Loading Section -->
-            <section id="loading-section" class="card hidden">
-                <h2>Analyzing Resume...</h2>
-                <div class="steps">
-                    <div class="step completed" id="step-upload">
-                        <span class="step-icon">&#10003;</span>
-                        <span>Resume uploaded</span>
+            <!-- 2. Modern Progress Loading Section -->
+            <section id="loading-section" class="card loading-card hidden">
+                <div class="loading-header">
+                    <div class="loading-spinner"></div>
+                    <div class="loading-titles">
+                        <h2>Analyzing Resume &amp; Synthesizing Questions</h2>
+                        <p class="loading-sub">Processing candidate qualifications through VlookUp evaluation intelligence...</p>
                     </div>
-                    <div class="step active" id="step-extract">
-                        <span class="step-icon">&bull;</span>
-                        <span>Reading resume content</span>
+                </div>
+
+                <!-- Progress Stepper -->
+                <div class="stepper">
+                    <div class="stepper-track">
+                        <div class="stepper-fill" id="stepper-progress-fill"></div>
                     </div>
-                    <div class="step active" id="step-generate">
-                        <span class="step-icon">&bull;</span>
-                        <span>Generating personalized questions...</span>
+                    <div class="stepper-steps">
+                        <div class="step-item completed" id="step-upload">
+                            <div class="step-indicator">
+                                <svg class="check-svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                                    <polyline points="20 6 9 17 4 12"/>
+                                </svg>
+                            </div>
+                            <div class="step-text">
+                                <span class="step-label">Upload</span>
+                                <span class="step-caption">File Verified</span>
+                            </div>
+                        </div>
+
+                        <div class="step-item active" id="step-extract">
+                            <div class="step-indicator">
+                                <span class="pulse-dot"></span>
+                            </div>
+                            <div class="step-text">
+                                <span class="step-label">Extraction</span>
+                                <span class="step-caption">OCR &amp; Document Parsing</span>
+                            </div>
+                        </div>
+
+                        <div class="step-item" id="step-generate">
+                            <div class="step-indicator">
+                                <span class="pulse-dot"></span>
+                            </div>
+                            <div class="step-text">
+                                <span class="step-label">Synthesis</span>
+                                <span class="step-caption">Curating 20 Questions</span>
+                            </div>
+                        </div>
+
+                        <div class="step-item" id="step-format">
+                            <div class="step-indicator">
+                                <span class="pulse-dot"></span>
+                            </div>
+                            <div class="step-text">
+                                <span class="step-label">Delivery</span>
+                                <span class="step-caption">Packaging Q&amp;A Kit</span>
+                            </div>
+                        </div>
                     </div>
-                    <div class="step" id="step-format">
-                        <span class="step-icon">&#9675;</span>
-                        <span>Formatting results</span>
-                    </div>
+                </div>
+
+                <div class="loading-footer">
+                    <span class="loading-hint">Estimated processing time: 5-15 seconds. Please do not close this window.</span>
                 </div>
             </section>
 
-            <!-- Result Section -->
-            <section id="result-section" class="card hidden">
-                <h2>Interview Questions &amp; Answers</h2>
+            <!-- 3. Result Section - Recruiter Intelligence Workspace -->
+            <section id="result-section" class="result-container hidden">
+                <!-- Candidate Profile Executive Card -->
+                <div class="card candidate-profile-card">
+                    <div class="profile-header-row">
+                        <div class="profile-avatar-block">
+                            <div class="profile-avatar" id="candidate-avatar">JD</div>
+                            <div class="profile-identity">
+                                <div class="profile-badge-row">
+                                    <span class="badge-role">Interview Kit Ready</span>
+                                    <span class="badge-tech">Web Developer Evaluation</span>
+                                </div>
+                                <h2 class="candidate-name" id="result-name">Candidate Name</h2>
+                            </div>
+                        </div>
 
-                <div class="result-header">
-                    <p><strong>Candidate:</strong> <span id="result-name"></span></p>
-                    <div class="result-summary">
-                        <strong>Profile Summary:</strong>
-                        <p id="result-summary"></p>
+                        <!-- Kit Summary Stats -->
+                        <div class="profile-stats-grid">
+                            <div class="stat-pill">
+                                <span class="stat-number" id="stat-total-q">20</span>
+                                <span class="stat-label">Questions</span>
+                            </div>
+                            <div class="stat-pill">
+                                <span class="stat-number" id="stat-categories-count">5</span>
+                                <span class="stat-label">Categories</span>
+                            </div>
+                            <div class="stat-pill">
+                                <span class="stat-number">100%</span>
+                                <span class="stat-label">Targeted</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Executive Summary Box -->
+                    <div class="summary-box">
+                        <div class="summary-title-row">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                                <polyline points="14 2 14 8 20 8"/>
+                                <line x1="16" y1="13" x2="8" y2="13"/>
+                                <line x1="16" y1="17" x2="8" y2="17"/>
+                            </svg>
+                            <span>Candidate Profile Summary</span>
+                        </div>
+                        <p class="summary-body" id="result-summary"></p>
                     </div>
                 </div>
 
-                <div id="result-questions"></div>
+                <!-- Recruiter Filter & Utility Toolbar -->
+                <div class="toolbar-card">
+                    <div class="toolbar-top">
+                        <!-- Category Tabs -->
+                        <div class="category-tabs" id="category-tabs" role="tablist">
+                            <button type="button" class="tab-btn active" data-cat="all">
+                                <span>All Questions</span>
+                                <span class="tab-count" id="count-all">20</span>
+                            </button>
+                            <button type="button" class="tab-btn" data-cat="MCQ">
+                                <span>MCQs</span>
+                                <span class="tab-count" id="count-mcq">5</span>
+                            </button>
+                            <button type="button" class="tab-btn" data-cat="Basic Technical">
+                                <span>Basic Technical</span>
+                                <span class="tab-count" id="count-basic">5</span>
+                            </button>
+                            <button type="button" class="tab-btn" data-cat="Mid Technical (MERN)">
+                                <span>MERN Stack</span>
+                                <span class="tab-count" id="count-mern">3</span>
+                            </button>
+                            <button type="button" class="tab-btn" data-cat="Resume Skills">
+                                <span>Resume Skills</span>
+                                <span class="tab-count" id="count-skills">3</span>
+                            </button>
+                            <button type="button" class="tab-btn" data-cat="Project">
+                                <span>Projects</span>
+                                <span class="tab-count" id="count-projects">2</span>
+                            </button>
+                            <button type="button" class="tab-btn" data-cat="VlookUp Scenario">
+                                <span>VlookUp Scenarios</span>
+                                <span class="tab-count" id="count-scenario">2</span>
+                            </button>
+                        </div>
 
-                <div class="result-actions">
-                    <button class="btn btn-outline" id="generate-again-btn">Generate Again</button>
-                    <button class="btn btn-primary" id="download-docx-btn">Download DOCX</button>
-                    <button class="btn btn-outline" id="print-btn">Print / Save as PDF</button>
+                        <!-- Right Actions -->
+                        <div class="toolbar-actions">
+                            <!-- View Mode Switcher: Interviewer vs HR -->
+                            <div class="view-mode-pill">
+                                <button type="button" class="view-mode-btn active" id="view-mode-tech" title="View technical key answers for developers">
+                                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+                                    <span>Technical Key</span>
+                                </button>
+                                <button type="button" class="view-mode-btn" id="view-mode-hr" title="View plain-English assessment guide for HR">
+                                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+                                    <span>HR Guide</span>
+                                </button>
+                            </div>
+                            <button type="button" class="btn btn-outline btn-sm" id="toggle-answers-btn">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                                    <circle cx="12" cy="12" r="3"/>
+                                </svg>
+                                <span id="toggle-answers-text">Collapse</span>
+                            </button>
+                            <button type="button" class="btn btn-outline btn-sm" id="copy-all-btn">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                                </svg>
+                                Copy All
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Search / Keyword Filter -->
+                    <div class="toolbar-search-row">
+                        <div class="search-input-wrap">
+                            <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="11" cy="11" r="8"/>
+                                <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                            </svg>
+                            <input type="text" id="question-search-input" placeholder="Search questions by technology, keyword, or concept (e.g. React, MongoDB, RBAC, SQL, Auth)..." autocomplete="off">
+                            <button type="button" class="search-clear-btn hidden" id="search-clear-btn">&times;</button>
+                        </div>
+                        <div class="search-match-count" id="search-match-count"></div>
+                    </div>
+                </div>
+
+                <!-- Questions List Container -->
+                <div id="result-questions" class="questions-stream"></div>
+
+                <!-- Floating / Fixed Action Dock -->
+                <div class="export-bar card">
+                    <div class="export-bar-left">
+                        <button type="button" class="btn btn-secondary" id="generate-again-btn">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="1 4 1 10 7 10"/>
+                                <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
+                            </svg>
+                            Analyze Another Resume
+                        </button>
+                        <button type="button" class="btn btn-outline" id="print-btn">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <polyline points="6 9 6 2 18 2 18 9"/>
+                                <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
+                                <rect x="6" y="14" width="12" height="8"/>
+                            </svg>
+                            Print / PDF
+                        </button>
+                    </div>
+
+                    <div class="export-bar-right">
+                        <!-- 1. Download for Interviewer (Technical Key) -->
+                        <button type="button" class="btn btn-primary" id="download-interviewer-btn" title="Download Word DOCX with technical key answers">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                <polyline points="7 10 12 15 17 10"/>
+                                <line x1="12" y1="15" x2="12" y2="3"/>
+                            </svg>
+                            <span>Download for Interviewer</span>
+                        </button>
+
+                        <!-- 2. Download for HR (Plain English Guide) -->
+                        <button type="button" class="btn btn-secondary btn-hr-download" id="download-hr-btn" title="Download Word DOCX with non-technical explanations for HR">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                                <circle cx="9" cy="7" r="4"/>
+                                <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                                <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                            </svg>
+                            <span>Download for HR</span>
+                        </button>
+
+                        <!-- 3. Download for Candidate (Questions Only) -->
+                        <button type="button" class="btn btn-secondary btn-candidate-download" id="download-candidate-btn" title="Download Word DOCX with questions and MCQ options only (no answer keys)">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                                <polyline points="14 2 14 8 20 8"/>
+                                <line x1="16" y1="13" x2="8" y2="13"/>
+                                <line x1="16" y1="17" x2="8" y2="17"/>
+                            </svg>
+                            <span>Download for Candidate</span>
+                        </button>
+                    </div>
                 </div>
             </section>
         </main>
 
-        <footer>
-            <p>Vlookup Resume Analyzer</p>
+        <!-- Professional Enterprise Footer -->
+        <footer class="app-footer">
+            <div class="footer-container">
+                <div class="footer-top-row">
+                    <div class="footer-brand">
+                        <img src="/static/img/vlookup-logo.png" alt="VlookUp Business Solutions" class="footer-logo" onerror="this.style.display='none'">
+                        <span class="footer-brand-divider"></span>
+                        <p class="footer-tagline">Helping business change gears</p>
+                    </div>
+                    <div class="footer-copyright">
+                        <p>&copy; 2026 VlookUp Business Solutions Pvt Ltd. All rights reserved.</p>
+                    </div>
+                </div>
+
+                <div class="footer-divider"></div>
+
+                <div class="footer-disclaimer-row">
+                    <p class="confidential-tag">
+                        <strong class="disclaimer-badge">DISCLAIMER:</strong>
+                        This communication is confidential and may be legally privileged. If you are not the intended recipient, (i) please do not read or disclose to others, (ii) please notify the sender by reply, and (iii) please delete this communication from your system. Failure to follow this process may be unlawful.
+                    </p>
+                </div>
+            </div>
         </footer>
     </div>
+
+    <!-- Toast Notification Element -->
+    <div id="toast" class="toast hidden">Copied to clipboard</div>
 
     <script src="/static/js/app.js"></script>
 </body>
