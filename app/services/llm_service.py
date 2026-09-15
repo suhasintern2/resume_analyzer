@@ -1,15 +1,28 @@
 import json
 import logging
 import httpx
-from app.prompts.interview_prompt import SYSTEM_PROMPT, build_user_prompt, RETRY_PROMPT_SUFFIX
+from app.prompts.interview_prompt import (
+    ROUND1_SYSTEM_PROMPT,
+    build_round1_user_prompt,
+    ROUND2_SYSTEM_PROMPT,
+    build_round2_user_prompt,
+    RETRY_PROMPT_SUFFIX,
+)
 from app.models.schemas import InterviewResult
 from app.config import settings
 
 logger = logging.getLogger(__name__)
 
 
+def _prompts_for_round(round_number: int) -> tuple[str, callable]:
+    """Return ``(system_prompt, user_prompt_builder)`` for a round."""
+    if round_number == 2:
+        return ROUND2_SYSTEM_PROMPT, build_round2_user_prompt
+    return ROUND1_SYSTEM_PROMPT, build_round1_user_prompt
+
+
 class LLMProvider:
-    def generate_interview_qa(self, resume_text: str) -> InterviewResult:
+    def generate_interview_qa(self, resume_text: str, round_number: int = 1) -> InterviewResult:
         raise NotImplementedError
 
 
@@ -40,10 +53,11 @@ class OpenAIProvider(LLMProvider):
             data = response.json()
             return data["choices"][0]["message"]["content"]
 
-    def generate_interview_qa(self, resume_text: str) -> InterviewResult:
+    def generate_interview_qa(self, resume_text: str, round_number: int = 1) -> InterviewResult:
+        system_prompt, user_builder = _prompts_for_round(round_number)
         messages = [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": build_user_prompt(resume_text)},
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_builder(resume_text)},
         ]
 
         response_text = self._call_api(messages, timeout=settings.LLM_TIMEOUT)
@@ -60,15 +74,16 @@ class OpenAIProvider(LLMProvider):
         data = json.loads(cleaned)
         return InterviewResult(**data)
 
-    def generate_with_retry(self, resume_text: str) -> InterviewResult:
+    def generate_with_retry(self, resume_text: str, round_number: int = 1) -> InterviewResult:
+        system_prompt, user_builder = _prompts_for_round(round_number)
         try:
-            return self.generate_interview_qa(resume_text)
+            return self.generate_interview_qa(resume_text, round_number=round_number)
         except (json.JSONDecodeError, Exception) as e:
             logger.warning(f"First LLM attempt failed: {e}, retrying...")
 
             messages = [
-                {"role": "system", "content": SYSTEM_PROMPT + RETRY_PROMPT_SUFFIX},
-                {"role": "user", "content": build_user_prompt(resume_text)},
+                {"role": "system", "content": system_prompt + RETRY_PROMPT_SUFFIX},
+                {"role": "user", "content": user_builder(resume_text)},
             ]
 
             response_text = self._call_api(messages, timeout=settings.LLM_TIMEOUT)
@@ -111,18 +126,19 @@ class GeminiProvider(LLMProvider):
         data = json.loads(cleaned)
         return InterviewResult(**data)
 
-    def generate_interview_qa(self, resume_text: str) -> InterviewResult:
-        return self._try_models(resume_text)
+    def generate_interview_qa(self, resume_text: str, round_number: int = 1) -> InterviewResult:
+        return self._try_models(resume_text, round_number=round_number)
 
-    def _try_models(self, resume_text: str) -> InterviewResult:
+    def _try_models(self, resume_text: str, round_number: int = 1) -> InterviewResult:
+        system_prompt, user_builder = _prompts_for_round(round_number)
         models = [self.model] + [m for m in self.fallback_models if m != self.model]
         errors = []
 
         for model in models:
             try:
                 payload = self._build_payload(
-                    user_content=build_user_prompt(resume_text),
-                    system_instruction=SYSTEM_PROMPT,
+                    user_content=user_builder(resume_text),
+                    system_instruction=system_prompt,
                 )
                 response_text = self._call_api(payload, model)
                 return self._parse_response(response_text)
@@ -133,8 +149,8 @@ class GeminiProvider(LLMProvider):
                 if model != models[-1]:
                     try:
                         payload = self._build_payload(
-                            user_content=build_user_prompt(resume_text),
-                            system_instruction=SYSTEM_PROMPT + RETRY_PROMPT_SUFFIX,
+                            user_content=user_builder(resume_text),
+                            system_instruction=system_prompt + RETRY_PROMPT_SUFFIX,
                         )
                         response_text = self._call_api(payload, model)
                         return self._parse_response(response_text)
@@ -144,8 +160,8 @@ class GeminiProvider(LLMProvider):
 
         raise RuntimeError(f"All LLM models failed: {'; '.join(errors)}")
 
-    def generate_with_retry(self, resume_text: str) -> InterviewResult:
-        return self._try_models(resume_text)
+    def generate_with_retry(self, resume_text: str, round_number: int = 1) -> InterviewResult:
+        return self._try_models(resume_text, round_number=round_number)
 
 
 def get_llm_provider() -> LLMProvider:

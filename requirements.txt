@@ -8,3 +8,16 @@ pymupdf
 pillow
 python-docx
 httpx
+
+# Task 12 — AI-free answer-script pipeline (OMR checkbox detection + TrOCR handwriting OCR).
+# No OpenCV/cv2 dependency. scipy is used for connected-component labelling in OMR
+# (optional — falls back to expected-box location when not installed).
+# TrOCR requires transformers + torch; no system-level Tesseract install needed.
+scipy
+transformers
+torch
+
+# Database
+sqlalchemy>=2.0.52
+psycopg[binary]>=3.2.10
+alembic>=1.16

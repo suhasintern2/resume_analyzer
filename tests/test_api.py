@@ -47,7 +47,11 @@ def test_generate_with_valid_pdf():
         page = doc.new_page()
         page.insert_text(
             (72, 72),
-            "Jane Smith\nSoftware Engineer\nSkills: Python, Django, React, PostgreSQL\n"
+            "Jane Smith\nSoftware Engineer\n"
+            "Professional Summary: Full Stack developer with four years of "
+            "experience building web applications using Python, Django, React, "
+            "PostgreSQL and MongoDB. Led a team of three developers.\n"
+            "Skills: Python, Django, React, PostgreSQL, REST APIs, Docker, AWS\n"
             "Experience: Software Developer at TechCorp (2020-2023)\n"
             "Projects: E-commerce Platform using Django and React",
         )
@@ -80,7 +84,13 @@ def test_download_docx_all_roles():
                 "options": ["A) MongoDB", "B) PostgreSQL", "C) SQLite", "D) Redis"],
                 "correct_option": "A",
                 "answer": "MongoDB stores data in flexible, JSON-like BSON documents.",
-                "hr_answer": "MongoDB is a document database."
+                "hr_answer": "MongoDB is a document database.",
+                "keywords": ["document database", "BSON", "NoSQL"],
+                "required_concepts": [
+                    {"name": "document model", "weight": 0.6},
+                    {"name": "JSON-like storage", "weight": 0.4},
+                ],
+                "important_phrases": ["flexible schema", "JSON-like documents"],
             }
         ]
     }
