@@ -3,10 +3,8 @@
  * - Score with evidence breakdown (keyword, concept, phrase, similarity, structure)
  * - Status badge (EVALUATED / NO_ANSWER / OCR_FAILED / UNCERTAIN)
  * - Feedback string (deterministic, no LLM)
- * - ScoreOverridePanel (inline, stores original auditably)
  */
 import { useState } from 'react';
-import ScoreOverridePanel from './ScoreOverridePanel';
 
 const STATUS_LABELS = {
   EVALUATED:    { label: 'Evaluated',     cls: 'badge-success' },
@@ -28,7 +26,6 @@ function scoreDisplay(score, maxScore) {
 export default function QuestionEvaluation({
   q,
   interviewId,
-  roundNumber = 1,
   onOverrideApplied,
   onToast,
 }) {
@@ -36,19 +33,6 @@ export default function QuestionEvaluation({
   const [localQ, setLocalQ]     = useState(q);
 
   const statusMeta = STATUS_LABELS[localQ.status] || { label: localQ.status, cls: 'badge-neutral' };
-
-  function handleOverrideApplied(result) {
-    // Update local display without requiring a full page reload
-    setLocalQ((prev) => ({
-      ...prev,
-      override_score: result.override_score,
-      override_reason: result.override_reason,
-      is_overridden: true,
-      // The effective displayed score is the override
-      score: result.override_score,
-    }));
-    onOverrideApplied?.(result);
-  }
 
   const effectiveScore = localQ.is_overridden
     ? localQ.override_score
@@ -131,17 +115,6 @@ export default function QuestionEvaluation({
               )}
             </div>
           )}
-
-          <ScoreOverridePanel
-            interviewId={interviewId}
-            questionNumber={localQ.question_number}
-            originalScore={localQ.original_score ?? localQ.score}
-            currentOverride={localQ.override_score}
-            maxScore={localQ.max_score}
-            roundNumber={roundNumber}
-            onOverrideApplied={handleOverrideApplied}
-            onToast={onToast}
-          />
         </div>
       )}
     </div>

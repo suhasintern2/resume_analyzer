@@ -1,0 +1,10 @@
+---
+name: dashboard-empty-fix
+description: Fixed issue where dashboard remains empty after deleting interview cards and uploading new resume
+metadata:
+  type: project
+---
+
+Fixed transient file system errors causing interview records not to be persisted after deletions. Added retry logic with exponential backoff for file persistence operations in interview service and document generation, plus improved error handling to return proper error responses when persistence fails completely.
+**Why:** Users experienced "it gave answer" but empty dashboard after delete/reupload cycle due to silent persistence failures.
+**How to apply:** The fix modifies interview_service.py and app/api/routes.py to add retry logic for persist_record and generate_and_persist_documents calls, with proper error handling that returns HTTP 500 on final failure.

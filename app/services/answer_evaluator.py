@@ -36,7 +36,6 @@ from app.db.models import (
     AnswerSegment,
     Evaluation,
     Interview,
-    InterviewRound,
     QuestionConceptKey,
     QuestionEvaluation,
     QuestionEvaluationKey,
@@ -439,18 +438,29 @@ def _check_mcq_answer(answer_text: str, correct_option: str | None, options: lis
         return True
 
     # Starts with letter: e.g. "B) ...", "B.", "OPTION B"
-    if ans_clean.startswith(corr_clean) and len(ans_clean) <= 4:
+    if ans_clean.startswith(corr_clean) and len(ans_clean) <= 6:
         return True
     if f"OPTION {corr_clean}" in ans_clean or f"({corr_clean})" in ans_clean:
         return True
 
+    # Handle "OPTION_B" format from OMR pass
+    if ans_clean.startswith("OPTION_"):
+        letter = ans_clean.replace("OPTION_", "").strip()
+        if letter == corr_clean:
+            return True
+
     # Matching option text if option text exists
     if options:
         for opt in options:
-            if opt.strip().upper().startswith(corr_clean):
+            opt_upper = opt.strip().upper()
+            # Check if the option starts with the correct letter
+            if opt_upper.startswith(corr_clean):
                 opt_body = opt.split(")", 1)[-1].strip() if ")" in opt else opt
                 if opt_body and _normalize_text(opt_body) in _normalize_text(answer_text):
                     return True
+            # Direct letter match in option
+            if corr_clean in opt_upper and len(corr_clean) == 1:
+                return True
     return False
 
 
@@ -692,19 +702,11 @@ class AnswerEvaluationService:
         cls,
         session: Session,
         interview_pk: int,
-        round_id: int | None = None,
     ) -> dict[int, QuestionKeyData]:
-        """Load evaluation keys and concepts for an interview round.
-
-        ``round_id=None`` matches legacy pre-round keys (round_id NULL).
-        """
+        """Load evaluation keys and concepts for an interview."""
         query = select(QuestionEvaluationKey).where(
             QuestionEvaluationKey.interview_id == interview_pk,
         )
-        if round_id is not None:
-            query = query.where(QuestionEvaluationKey.round_id == round_id)
-        else:
-            query = query.where(QuestionEvaluationKey.round_id.is_(None))
         rows = list(
             session.scalars(query.order_by(QuestionEvaluationKey.question_number)).all()
         )
@@ -736,17 +738,12 @@ class AnswerEvaluationService:
         interview: Interview,
         segments: list[AnswerSegment] | None = None,
         override_keys: dict[int, QuestionKeyData] | None = None,
-        round_id: int | None = None,
     ) -> dict[str, Any]:
-        """Evaluate an interview round deterministically across all questions."""
+        """Evaluate an interview deterministically across all questions."""
         if segments is None:
             query = select(AnswerSegment).where(
                 AnswerSegment.interview_id == interview.id,
             )
-            if round_id is not None:
-                query = query.where(AnswerSegment.round_id == round_id)
-            else:
-                query = query.where(AnswerSegment.round_id.is_(None))
             segments = list(
                 session.scalars(
                     query.order_by(
@@ -756,7 +753,7 @@ class AnswerEvaluationService:
             )
 
         eval_keys = override_keys or cls.load_evaluation_keys(
-            session, interview.id, round_id=round_id,
+            session, interview.id,
         )
         weights = get_layer_weights()
 
@@ -852,7 +849,7 @@ class AnswerEvaluationService:
 
         percentage: Decimal | None = None
         if max_scorable > Decimal("0.00"):
-            percentage = Decimal(str(round(float(total_scorable / max_scorable) * 100, 1)))
+            percentage = Decimal(str(round(float(total_sorable / max_scorable) * 100, 1)))
 
         return {
             "interview_id": interview.interview_id,
@@ -869,38 +866,28 @@ class AnswerEvaluationService:
         session: Session,
         interview: Interview,
         eval_data: dict[str, Any],
-        round_id: int | None = None,
     ) -> Evaluation:
         """Persist evaluation results into the database in a single transaction.
 
-        Round-scoped (Task 12): the evaluation is pinned per
-        (interview, round), so round-1 and round-2 results coexist.  Legacy
-        rows use ``round_id=None``.
-
         Guarantees:
-        - Exactly one evaluation has is_current = true per interview round
+        - Exactly one evaluation has is_current = true per interview
         - Previous evaluations are set is_current = false, preserving history
         - Original deterministic scores are recorded on question_evaluations
         - Updates interview.status to EVALUATED
         """
-        # 1. Flip previous evaluations for this (interview, round) to false.
+        # 1. Flip previous evaluations for this interview to false.
         query = select(Evaluation).where(
             Evaluation.interview_id == interview.id,
             Evaluation.is_current.is_(True),
         )
-        if round_id is not None:
-            query = query.where(Evaluation.round_id == round_id)
-        else:
-            query = query.where(Evaluation.round_id.is_(None))
         prev_evals = list(session.scalars(query).all())
         for prev in prev_evals:
             prev.is_current = False
         session.flush()
 
-        # 2. Insert new current Evaluation row (round-scoped).
+        # 2. Insert new current Evaluation row.
         new_eval = Evaluation(
             interview_id=interview.id,
-            round_id=round_id,
             evaluator_version=eval_data.get("evaluator_version", "v1.0.0-deterministic"),
             total_score=eval_data.get("total_score"),
             max_score=eval_data.get("max_score"),
@@ -929,19 +916,15 @@ class AnswerEvaluationService:
             )
             session.add(q_eval)
 
-        # 4. Update interview + round state
+        # 4. Update interview state
         interview.status = "EVALUATED"
         interview.processing_stage = None
         interview.error_reason = None
-        if round_id is not None:
-            round_obj = session.get(InterviewRound, round_id)
-            if round_obj is not None:
-                round_obj.status = "EVALUATED"
         session.commit()
 
         logger.info(
-            "Evaluation completed for interview %s round=%s (score=%s/%s)",
-            interview.interview_id, round_id,
+            "Evaluation completed for interview %s (score=%s/%s)",
+            interview.interview_id,
             new_eval.total_score,
             new_eval.max_score,
         )

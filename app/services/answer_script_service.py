@@ -29,10 +29,7 @@ from app.db.models import (
     AnswerSegment,
     File,
     Interview,
-    InterviewRound,
     QuestionEvaluationKey,
-    ROUND_1,
-    ROUND_2,
 )
 from app.services.answer_segmentation import (
     SegmentRecord,
@@ -60,9 +57,9 @@ logger = logging.getLogger(__name__)
 _DB_ANSWER_SCRIPT = "ANSWER_SCRIPT"
 _DB_QUESTION_SHEET = "QUESTION_SHEET"
 
-# Round statuses that indicate this round is the one actively flowing through
+# Statuses that indicate the interview is actively flowing through
 # the answer-script/evaluation lifecycle.
-_ACTIVE_ROUND_STATUSES = {
+_ACTIVE_INTERVIEW_STATUSES = {
     "ANSWER_UPLOADED", "SEGMENTED", "SEGMENTATION_UNCERTAIN", "EVALUATING",
 }
 
@@ -70,24 +67,12 @@ _ACTIVE_ROUND_STATUSES = {
 def resolve_active_answer_round(
     session: Session,
     interview: Interview,
-) -> InterviewRound | None:
-    """Find the round currently flowing through the answer-script pipeline.
+) -> None:
+    """In a single round system, we don't have rounds, so we return None.
 
-    Only one round is active at a time (round 2 cannot begin until round 1 is
-    EVALUATED), so the first round row in an active status wins.  Returns
-    None for legacy pre-Task-11 interviews (no round rows at all) — those are
-    processed in legacy mode with ``round_id = NULL``.
+    The interview itself tracks the status through the answer-script pipeline.
     """
-    rounds = interview_service.list_rounds(session, interview_pk=interview.id)
-    for r in rounds:
-        if r.status in _ACTIVE_ROUND_STATUSES:
-            return r
-    if not rounds and interview.status in {
-        "ANSWER_UPLOADED", "SEGMENTED", "SEGMENTATION_UNCERTAIN", "EVALUATING",
-    }:
-        # Legacy interview — treat as round 1 without a round row.
-        return None
-    return rounds[0] if rounds else None
+    return None
 
 
 def persist_answer_scripts(
@@ -95,17 +80,15 @@ def persist_answer_scripts(
     *,
     interview: Interview,
     scripts: list[tuple[bytes, str]],
-    round_id: int | None = None,
 ) -> int:
-    """Replace all ANSWER_SCRIPT record files for an interview round.
+    """Replace all ANSWER_SCRIPT record files for an interview.
 
-    Idempotent re-upload: previous ANSWER_SCRIPT rows for the (interview,
-    round) and their files are removed first.  Sets the interview — and its
-    active round — to ANSWER_UPLOADED so the worker picks it up.  Returns how
-    many pages were persisted.
+    Idempotent re-upload: previous ANSWER_SCRIPT rows for the interview
+    and their files are removed first.  Sets the interview to ANSWER_UPLOADED
+    so the worker picks it up.  Returns how many pages were persisted.
     """
     existing = list_answer_script_files(
-        session, interview_pk=interview.id, round_id=round_id,
+        session, interview_pk=interview.id,
     )
     for old in existing:
         delete_stored_file(old.file_path)
@@ -123,7 +106,6 @@ def persist_answer_scripts(
         session.add(
             File(
                 interview_id=interview.id,
-                round_id=round_id,
                 file_type=_DB_ANSWER_SCRIPT,
                 file_path=path,
             )
@@ -132,50 +114,39 @@ def persist_answer_scripts(
 
     interview.status = "ANSWER_UPLOADED"
     interview.processing_stage = None
-    round_obj = _round_by_id(session, round_id) if round_id is not None else None
-    if round_obj is not None:
-        round_obj.status = "ANSWER_UPLOADED"
     session.commit()
     return count
 
 
-def _round_by_id(session: Session, round_id: int) -> InterviewRound | None:
-    return session.get(InterviewRound, round_id)
 
 
 def list_answer_script_files(
     session: Session,
     *,
     interview_pk: int,
-    round_id: int | None = None,
 ) -> list[File]:
-    query = select(File).where(
-        File.interview_id == interview_pk,
-        File.file_type == _DB_ANSWER_SCRIPT,
+    return list(
+        session.scalars(
+            select(File).where(
+                File.interview_id == interview_pk,
+                File.file_type == _DB_ANSWER_SCRIPT,
+            )
+        ).all()
     )
-    if round_id is not None:
-        query = query.where(File.round_id == round_id)
-    else:
-        query = query.where(File.round_id.is_(None))
-    return list(session.scalars(query.order_by(File.id)).all())
 
 
 def _question_sheet_layout(
     session: Session,
     *,
     interview_pk: int,
-    round_id: int | None,
 ) -> dict | None:
-    """layout_metadata of the round's question sheet (OMR reference)."""
-    query = select(File).where(
-        File.interview_id == interview_pk,
-        File.file_type == _DB_QUESTION_SHEET,
+    """layout_metadata of the question sheet (OMR reference)."""
+    sheet = session.scalar(
+        select(File).where(
+            File.interview_id == interview_pk,
+            File.file_type == _DB_QUESTION_SHEET,
+        )
     )
-    if round_id is not None:
-        query = query.where(File.round_id == round_id)
-    else:
-        query = query.where(File.round_id.is_(None))
-    sheet = session.scalar(query)
     if sheet is None:
         return None
     metadata = sheet.layout_metadata
@@ -188,35 +159,26 @@ def count_question_keys(
     session: Session,
     *,
     interview_pk: int,
-    round_id: int | None = None,
 ) -> int:
-    query = select(func.count()).select_from(QuestionEvaluationKey).where(
-        QuestionEvaluationKey.interview_id == interview_pk,
-    )
-    if round_id is not None:
-        query = query.where(QuestionEvaluationKey.round_id == round_id)
-    else:
-        query = query.where(QuestionEvaluationKey.round_id.is_(None))
-    return session.scalar(query) or 0
+    return session.scalar(
+        select(func.count()).select_from(QuestionEvaluationKey).where(
+            QuestionEvaluationKey.interview_id == interview_pk,
+        )
+    ) or 0
 
 
 def save_segments(
     session: Session,
     *,
     interview_pk: int,
-    round_id: int | None,
     segments: list[SegmentRecord],
 ) -> int:
-    """Replace all segments for an interview round (idempotent re-run).
+    """Replace all segments for an interview (idempotent re-run).
 
     A manual override must survive re-segmentation, so overridden rows are
     carried over (by detected original number) instead of being dropped.
     """
     query = select(AnswerSegment).where(AnswerSegment.interview_id == interview_pk)
-    if round_id is not None:
-        query = query.where(AnswerSegment.round_id == round_id)
-    else:
-        query = query.where(AnswerSegment.round_id.is_(None))
     existing = list(session.scalars(query).all())
     overridden = {
         s.original_question_number or s.question_number: s
@@ -236,7 +198,6 @@ def save_segments(
             # Keep the human's correction out of an automatic re-run.
             session.add(AnswerSegment(
                 interview_id=interview_pk,
-                round_id=round_id,
                 question_number=prior.question_number,
                 content=record.content,
                 status=record.status,
@@ -247,7 +208,6 @@ def save_segments(
         else:
             session.add(AnswerSegment(
                 interview_id=interview_pk,
-                round_id=round_id,
                 question_number=record.question_number,
                 content=record.content,
                 status=record.status,
@@ -314,34 +274,30 @@ def process_answer_script(
     session: Session,
     interview: Interview,
 ) -> dict:
-    """AI-free OMR+Tesseract processing of the active round's scripts.
+    """AI-free OMR+Tesseract processing of the interview's scripts.
 
     Called by the worker on a claimed ANSWER_UPLOADED interview.  Commits on
     success; raises on failure (the worker rolls back and marks FAILED).
     """
-    round_obj = resolve_active_answer_round(session, interview)
-    round_id = round_obj.id if round_obj is not None else None
-    resolved_number = round_obj.round_number if round_obj is not None else ROUND_1
-
     question_count = count_question_keys(
-        session, interview_pk=interview.id, round_id=round_id,
+        session, interview_pk=interview.id,
     )
     if question_count <= 0:
         raise PipelineError(
-            f"No evaluation keys for {interview.interview_id} round {resolved_number} "
+            f"No evaluation keys for {interview.interview_id} "
             "— cannot segment an answer sheet without questions."
         )
 
     files = list_answer_script_files(
-        session, interview_pk=interview.id, round_id=round_id,
+        session, interview_pk=interview.id,
     )
     if not files:
         raise PipelineError(
-            f"No answer script files for {interview.interview_id} round {resolved_number}."
+            f"No answer script files for {interview.interview_id}."
         )
 
     layout_metadata = _question_sheet_layout(
-        session, interview_pk=interview.id, round_id=round_id,
+        session, interview_pk=interview.id,
     )
 
     pages: list[object] = []
@@ -353,6 +309,10 @@ def process_answer_script(
     if layout_metadata is not None and pages:
         try:
             omr_segments = _omr_segments(pages, layout_metadata)
+            print(f"\nOMR DETECTED {len(omr_segments)} marked answers:")
+            for qnum, seg in sorted(omr_segments.items()):
+                print(f"  Q{qnum}: [{seg.status}] {seg.content}")
+            print()
         except Exception as exc:  # noqa: BLE001
             logger.exception("OMR pass failed for %s; falling back to OCR only", interview.interview_id)
             omr_segments = {}
@@ -373,11 +333,19 @@ def process_answer_script(
                 "OCR failed for answer script %s: %s", f.file_path, exc,
             )
             continue
-        if text.strip():
+        if text and text.strip():
             ocr_text_parts.append(text.strip())
         logger.info(
-            "Local OCR'd answer script %s for %s round %d",
-            os.path.basename(f.file_path), interview.interview_id, resolved_number,
+            "Local OCR'd answer script %s for %s (%d chars)",
+            os.path.basename(f.file_path), interview.interview_id,
+            len(text.strip()) if text else 0,
+        )
+
+    if not ocr_text_parts:
+        logger.warning(
+            "No OCR text extracted for %s — "
+            "all questions will be BLANK/UNCERTAIN",
+            interview.interview_id,
         )
 
     # OCR text -> aligned segments (open-ended answers, when printable
@@ -387,13 +355,24 @@ def process_answer_script(
     ocr_by_number: dict[int, SegmentRecord] = {}
     if ocr_text_parts:
         combined = "\n\n".join(ocr_text_parts)
+        print(f"\n{'='*60}")
+        print(f"RAW OCR TEXT ({len(combined)} chars):")
+        print(f"{'='*60}")
+        print(combined)
+        print(f"{'='*60}\n")
+
         ocr_segments_all, _ocr_matched = segment_ocr_text(combined, question_count)
         for seg in ocr_segments_all:
             if seg.question_number is not None and seg.question_number not in ocr_by_number:
                 ocr_by_number[seg.question_number] = seg
 
+        print(f"SEGMENTED INTO {len(ocr_segments_all)} blocks (matched={_ocr_matched}):")
+        for seg in ocr_segments_all:
+            print(f"  Q{seg.question_number}: [{seg.status}] {seg.content[:80]}")
+        print()
+
     # Merge: OMR wins for MCQ numbers, OCR fills the rest. Absent numbers are
-    # left out (never guessed) so the round is held out as UNCERTAIN.
+    # left out (never guessed) so the interview is held out as UNCERTAIN.
     merged: list[SegmentRecord] = []
     for number in range(1, question_count + 1):
         if number in omr_segments:
@@ -401,11 +380,18 @@ def process_answer_script(
         elif number in ocr_by_number:
             merged.append(ocr_by_number[number])
 
+    print(f"FINAL MERGED SEGMENTS ({len(merged)}/{question_count} questions):")
+    for seg in merged:
+        print(f"  Q{seg.question_number}: [{seg.status}] {seg.content[:100]}")
+    missing = [n for n in range(1, question_count + 1) if n not in {s.question_number for s in merged}]
+    if missing:
+        print(f"  MISSING questions: {missing}")
+    print()
+
     unnumbered = [s for s in ocr_segments_all if s.question_number is None]
     save_segments(
         session,
         interview_pk=interview.id,
-        round_id=round_id,
         segments=unnumbered + merged,
     )
 
@@ -413,13 +399,11 @@ def process_answer_script(
     status = "SEGMENTED" if aligned else "SEGMENTATION_UNCERTAIN"
     interview.status = status
     interview.processing_stage = None
-    if round_obj is not None:
-        round_obj.status = status
     session.commit()
 
     logger.info(
-        "Interview %s round %d -> %s (%d omr + %d ocr segments, %s)",
-        interview.interview_id, resolved_number, status,
+        "Interview %s -> %s (%d omr + %d ocr segments, %s)",
+        interview.interview_id, status,
         len(omr_segments), len(ocr_by_number),
         "OMR+OCR" if layout_metadata else "OCR-only",
     )
@@ -430,17 +414,13 @@ def _segments_ordinal(
     session: Session,
     *,
     interview_pk: int,
-    round_id: int | None = None,
 ) -> list[AnswerSegment]:
     """Return segments ordered for review: aligned first, then unnumbered."""
-    query = select(AnswerSegment).where(AnswerSegment.interview_id == interview_pk)
-    if round_id is not None:
-        query = query.where(AnswerSegment.round_id == round_id)
-    else:
-        query = query.where(AnswerSegment.round_id.is_(None))
     return list(
         session.scalars(
-            query.order_by(
+            select(AnswerSegment).where(
+                AnswerSegment.interview_id == interview_pk,
+            ).order_by(
                 AnswerSegment.question_number.nulls_last(),
                 AnswerSegment.id,
             )
@@ -452,9 +432,8 @@ def get_segments(
     session: Session,
     *,
     interview_pk: int,
-    round_id: int | None = None,
 ) -> list[AnswerSegment]:
-    return _segments_ordinal(session, interview_pk=interview_pk, round_id=round_id)
+    return _segments_ordinal(session, interview_pk=interview_pk)
 
 
 def reassign_segment(
@@ -489,20 +468,15 @@ def recompute_segmentation_status(
     session: Session,
     *,
     interview: Interview,
-    round_number: int = ROUND_1,
 ) -> bool:
-    """After a manual correction, re-derive the round's status.
+    """After a manual correction, re-derive the interview's status.
 
     Exact set equality only: SEGMENTED when the stored question numbers are
     precisely ``1..N`` each once, otherwise SEGMENTATION_UNCERTAIN.
     """
-    round_obj = interview_service.get_round(
-        session, interview_pk=interview.id, round_number=round_number,
-    )
-    round_id = round_obj.id if round_obj is not None else None
-    segments = _segments_ordinal(session, interview_pk=interview.id, round_id=round_id)
+    segments = _segments_ordinal(session, interview_pk=interview.id)
     question_count = count_question_keys(
-        session, interview_pk=interview.id, round_id=round_id,
+        session, interview_pk=interview.id,
     )
     aligned = matches_question_numbers(
         [SegmentRecord(
@@ -514,7 +488,5 @@ def recompute_segmentation_status(
     )
     status = "SEGMENTED" if aligned else "SEGMENTATION_UNCERTAIN"
     interview.status = status
-    if round_obj is not None:
-        round_obj.status = status
     session.commit()
     return aligned

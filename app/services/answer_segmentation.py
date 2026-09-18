@@ -32,7 +32,13 @@ from app.services.ocr_service import BLANK_MARKER, ILLEGIBLE_MARKER
 # The trailing ``[#.:\-)]?\s*`` consumes a following colon/dot/bracket + any
 # whitespace so the segment content is the answer text, not ": answer".
 _MARKER_RE = re.compile(
-    r"(?im)^\s*(?:question\s*|answer\s*|q\s*)[#.:\-]?\s*(?:no\.?|number)?\s*(\d{1,3})\b[#.:\-)]?\s*",
+    r"(?im)^\s*(?:question\s*|answer\s*|q\s*|ans\s*)[#.:\-]?\s*(?:no\.?|number)?\s*(\d{1,3})\b[#.:\-)]?\s*",
+)
+
+# Also match bare numbers at line start: "1.", "2)", "  3  " — for answer sheets
+# that just number their answers without the word "Question".
+_BARE_NUMBER_RE = re.compile(
+    r"(?m)^\s*(\d{1,3})\s*[.:\-)]\s*",
 )
 
 # A block whose whole content is just one or more of the same marker.
@@ -60,6 +66,9 @@ class _Block:
 
 def _split_blocks(ocr_text: str) -> list[_Block]:
     matches = list(_MARKER_RE.finditer(ocr_text))
+    if not matches:
+        # Fallback: try bare-number markers ("1.", "2)", etc.)
+        matches = list(_BARE_NUMBER_RE.finditer(ocr_text))
     if not matches:
         return [_Block(None, ocr_text)]
 

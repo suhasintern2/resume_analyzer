@@ -28,7 +28,7 @@ import os
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import File, Interview, ROUND_1, ROUND_2
+from app.db.models import File, Interview
 from app.services import interview_service
 from app.services.document_service import generate_and_persist_documents
 from app.services.evaluation_key_service import save_interview_evaluation_keys
@@ -117,41 +117,20 @@ def run_pipeline(session: Session, interview: Interview) -> None:
     # --- GENERATING (LLM + evaluation keys) --------------------------------
     _set_stage(session, interview, status="PROCESSING", processing_stage="GENERATING")
 
-    # Task 12 — generate BOTH rounds upfront in the same pipeline run.
-    for round_number in (ROUND_1, ROUND_2):
-        round_obj = interview_service.get_round(
-            session, interview_pk=interview.id, round_number=round_number,
-        )
-        if round_obj is None:
-            raise PipelineError(
-                f"Missing round-{round_number} row for this interview."
-            )
-        round_obj.status = "QUESTIONS_GENERATING"
-        session.commit()
-        logger.info(
-            "Interview %s: generating round %d questions",
-            interview.interview_id, round_number,
-        )
-        result = generate_interview_questions(resume_text, round_number=round_number)
-        save_interview_evaluation_keys(
-            session, interview_id=interview.id, result=result,
-            round_id=round_obj.id,
-        )
+    # Generate questions for the single round
+    result = generate_interview_questions(resume_text)
+    interview.candidate_name = result.candidate_name
 
-        # --- FORMATTING (documents) ---
-        _set_stage(session, interview, status="PROCESSING", processing_stage="FORMATTING")
-        if round_number == ROUND_1:
-            interview.candidate_name = result.candidate_name
-        generate_and_persist_documents(
-            session, interview=interview, result=result, round_id=round_obj.id,
-        )
-        round_obj.status = "QUESTIONS_READY"
-        session.commit()
-        logger.info(
-            "Interview %s: round %d QUESTIONS_READY (%d questions, candidate=%s)",
-            interview.interview_id, round_number,
-            len(result.questions), result.candidate_name,
-        )
+    # Save evaluation keys
+    save_interview_evaluation_keys(
+        session, interview_id=interview.id, result=result,
+    )
+
+    # --- FORMATTING (documents) ---
+    _set_stage(session, interview, status="PROCESSING", processing_stage="FORMATTING")
+    generate_and_persist_documents(
+        session, interview=interview, result=result,
+    )
 
     # --- COMPLETED ---------------------------------------------------------
     interview.status = "COMPLETED"
@@ -159,6 +138,6 @@ def run_pipeline(session: Session, interview: Interview) -> None:
     interview.error_reason = None
     session.commit()
     logger.info(
-        "Interview %s COMPLETED (both rounds questions ready)",
+        "Interview %s COMPLETED (questions ready)",
         interview.interview_id,
     )

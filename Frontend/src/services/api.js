@@ -62,7 +62,6 @@ export async function downloadDocx(result, role) {
 /**
  * List all interviews ordered by creation date descending.
  * Returns { interviews: InterviewListItem[] }
- * Each item now carries a `rounds` array (status + percentage per round).
  */
 export async function listInterviews() {
   const response = await fetch('/api/interviews');
@@ -86,7 +85,7 @@ export async function createInterview(file) {
 
 /**
  * Get a single interview by its display ID (e.g. "INT-20260914-001").
- * Returns InterviewDetail — includes `rounds` array.
+ * Returns InterviewDetail.
  */
 export async function getInterview(interviewId) {
   const response = await fetch(`/api/interviews/${encodeURIComponent(interviewId)}`);
@@ -109,7 +108,7 @@ export async function renameInterview(interviewId, displayName) {
 }
 
 /**
- * Select a candidate for Round 2 (flips access gate on round 1).
+ * Select a candidate for next step.
  * POST /api/interviews/{id}/select-next-round
  */
 export async function selectNextRound(interviewId) {
@@ -120,11 +119,53 @@ export async function selectNextRound(interviewId) {
   return _json(response);
 }
 
+/**
+ * Delete an interview and all its associated files.
+ * DELETE /api/interviews/{id}
+ */
+export async function deleteInterview(interviewId) {
+  const response = await fetch(
+    `/api/interviews/${encodeURIComponent(interviewId)}`,
+    { method: 'DELETE' },
+  );
+  return _json(response);
+}
+
+// ── Dashboard — Mark as Done ────────────────────────────────────────
+
+/**
+ * Mark an interview as done. Auto-deletes generated PDFs.
+ * Returns { success, interview_id, status, message }
+ */
+export async function markAsDone(interviewId) {
+  const response = await fetch(
+    `/api/interviews/${encodeURIComponent(interviewId)}/mark-as-done`,
+    { method: 'POST' },
+  );
+  return _json(response);
+}
+
+// ── Dashboard — PDF Downloads ───────────────────────────────────────
+
+/**
+ * Download a PDF for an interview (interviewer or hr role).
+ * Returns a Blob.
+ */
+export async function downloadInterviewPDF(interviewId, role) {
+  const response = await fetch(
+    `/api/interviews/${encodeURIComponent(interviewId)}/pdf/${encodeURIComponent(role)}`,
+  );
+  if (!response.ok) {
+    throw new Error(`PDF download failed (${response.status})`);
+  }
+  return response.blob();
+}
+
 // ── Dashboard — Documents ─────────────────────────────────────────────────────
 
 /**
  * List generated documents for an interview.
- * Returns { interview_id, documents: [{ file_type, file_path, round_number, created_at }] }
+ * Returns { interview_id, documents: [{ file_type, file_path, created_at }] }
  */
 export async function listDocuments(interviewId) {
   const response = await fetch(
@@ -135,16 +176,30 @@ export async function listDocuments(interviewId) {
 
 /**
  * Download a generated document (question_sheet | answer_key) as a Blob.
- * roundNumber selects which round's document to download; defaults to 1.
  */
 export async function downloadInterviewDocument(
   interviewId,
   fileType,
-  roundNumber = 1,
 ) {
-  const params = new URLSearchParams({ round_number: String(roundNumber) });
   const response = await fetch(
-    `/api/interviews/${encodeURIComponent(interviewId)}/documents/${encodeURIComponent(fileType)}?${params}`,
+    `/api/interviews/${encodeURIComponent(interviewId)}/documents/${encodeURIComponent(fileType)}`,
+  );
+  return _blob(response);
+}
+
+/**
+ * Download a role-specific DOCX (interviewer | hr | candidate) as a Blob.
+ * Generated on-the-fly from evaluation keys.
+ */
+export async function downloadRoleDocx(
+  interviewId,
+  role,
+) {
+  const params = new URLSearchParams({
+    role,
+  });
+  const response = await fetch(
+    `/api/interviews/${encodeURIComponent(interviewId)}/documents/question_sheet?${params}`,
   );
   return _blob(response);
 }
@@ -153,18 +208,16 @@ export async function downloadInterviewDocument(
 
 /**
  * Upload one or more answer-script pages for an interview.
- * files: FileList or File[] — roundNumber defaults to 1.
+ * files: FileList or File[]
  * Returns AnswerScriptUploadResponse
  */
 export async function uploadAnswerScript(
   interviewId,
   files,
-  roundNumber = 1,
 ) {
   const formData = new FormData();
   const fileArray = Array.from(files);
   fileArray.forEach((f) => formData.append('files', f));
-  formData.append('round_number', String(roundNumber));
 
   const response = await fetch(
     `/api/interviews/${encodeURIComponent(interviewId)}/answer-script`,
@@ -177,30 +230,27 @@ export async function uploadAnswerScript(
 }
 
 /**
- * Get segmented answer blocks for a SEGMENTED or SEGMENTATION_UNCERTAIN round.
- * Returns { interview_id, round_number, status, matched, segments: AnswerSegmentOut[] }
+ * Get segmented answer blocks for a SEGMENTED or SEGMENTATION_UNCERTAIN interview.
+ * Returns { interview_id, status, matched, segments: AnswerSegmentOut[] }
  */
-export async function getSegments(interviewId, roundNumber = 1) {
-  const params = new URLSearchParams({ round_number: String(roundNumber) });
+export async function getSegments(interviewId) {
   const response = await fetch(
-    `/api/interviews/${encodeURIComponent(interviewId)}/segments?${params}`,
+    `/api/interviews/${encodeURIComponent(interviewId)}/segments`,
   );
   return _json(response);
 }
 
 /**
  * Reassign a segment to a different question number (manual correction).
- * Returns { interview_id, round_number, status, matched, segment }
+ * Returns { interview_id, status, matched, segment }
  */
 export async function reassignSegment(
   interviewId,
   segmentId,
   questionNumber,
-  roundNumber = 1,
 ) {
-  const params = new URLSearchParams({ round_number: String(roundNumber) });
   const response = await fetch(
-    `/api/interviews/${encodeURIComponent(interviewId)}/segments/${segmentId}/reassign?${params}`,
+    `/api/interviews/${encodeURIComponent(interviewId)}/segments/${segmentId}/reassign`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -213,26 +263,24 @@ export async function reassignSegment(
 // ── Dashboard — Evaluation ────────────────────────────────────────────────────
 
 /**
- * Trigger deterministic evaluation for a SEGMENTED round.
+ * Trigger deterministic evaluation for a SEGMENTED interview.
  * Returns EvaluationStartResponse { success, interview_id, status }
  */
-export async function startEvaluation(interviewId, roundNumber = 1) {
-  const params = new URLSearchParams({ round_number: String(roundNumber) });
+export async function startEvaluation(interviewId) {
   const response = await fetch(
-    `/api/interviews/${encodeURIComponent(interviewId)}/evaluate?${params}`,
+    `/api/interviews/${encodeURIComponent(interviewId)}/evaluate`,
     { method: 'POST' },
   );
   return _json(response);
 }
 
 /**
- * Retrieve the current evaluation result for a round.
+ * Retrieve the current evaluation result.
  * Returns EvaluationDetailOut
  */
-export async function getEvaluation(interviewId, roundNumber = 1) {
-  const params = new URLSearchParams({ round_number: String(roundNumber) });
+export async function getEvaluation(interviewId) {
   const response = await fetch(
-    `/api/interviews/${encodeURIComponent(interviewId)}/evaluation?${params}`,
+    `/api/interviews/${encodeURIComponent(interviewId)}/evaluation`,
   );
   return _json(response);
 }
@@ -246,11 +294,9 @@ export async function overrideScore(
   questionNumber,
   overrideScore,
   overrideReason,
-  roundNumber = 1,
 ) {
-  const params = new URLSearchParams({ round_number: String(roundNumber) });
   const response = await fetch(
-    `/api/interviews/${encodeURIComponent(interviewId)}/evaluation/questions/${questionNumber}/override?${params}`,
+    `/api/interviews/${encodeURIComponent(interviewId)}/evaluation/questions/${questionNumber}/override`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -261,4 +307,76 @@ export async function overrideScore(
     },
   );
   return _json(response);
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// MCQ Question Bank (Task 13)
+// ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * Get available MCQ days (1-10).
+ * Returns { days: number[] }
+ */
+export async function getMCQDays() {
+  const response = await fetch('/api/mcq/days');
+  return _json(response);
+}
+
+/**
+ * Get status for a specific day.
+ * Returns { day, available, questions, question_count, correct_answers_available }
+ */
+export async function getMCQDay(day) {
+  const response = await fetch(`/api/mcq/day/${day}`);
+  return _json(response);
+}
+
+/**
+ * Download MCQ question paper DOCX for a specific day.
+ * Returns a Blob.
+ */
+export async function downloadMCQPaper(day) {
+  const response = await fetch(`/api/mcq/day/${day}/download`);
+  if (!response.ok) {
+    throw new Error(`Failed to download question paper (${response.status})`);
+  }
+  return response.blob();
+}
+
+/**
+ * Upload completed MCQ answer sheets for a specific day.
+ * files: FileList or File[] (text files with candidate answers)
+ * Returns { success, day, scores, message }
+ */
+export async function uploadMCQAnswers(day, files) {
+  const formData = new FormData();
+  const fileArray = Array.from(files);
+  fileArray.forEach((f) => formData.append('files', f));
+
+  const response = await fetch(
+    `/api/mcq/day/${day}/upload`,
+    { method: 'POST', body: formData },
+  );
+  return _json(response);
+}
+
+/**
+ * Get the correct answer key for a specific day.
+ * Returns { day, questions, correct_answers, total_questions }
+ */
+export async function getMCQResults(day) {
+  const response = await fetch(`/api/mcq/day/${day}/results`);
+  return _json(response);
+}
+
+/**
+ * Download MCQ answer key DOCX for a specific day.
+ * Returns a Blob.
+ */
+export async function downloadMCQAnswerKey(day) {
+  const response = await fetch(`/api/mcq/day/${day}/download-answer-key`);
+  if (!response.ok) {
+    throw new Error(`Failed to download answer key (${response.status})`);
+  }
+  return response.blob();
 }

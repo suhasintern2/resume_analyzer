@@ -14,10 +14,12 @@ class QuestionAnswer(BaseModel):
     number: int
     category: str
     question: str
-    options: list[str] | None = None
-    correct_option: str | None = None
     answer: str
     hr_answer: str | None = None
+    options: list[str] | None = None
+    correct_option: str | None = None
+    plain_answer: str | None = None
+    question_type: str = "subjective"
 
     # Task 5 — deterministic evaluation key (per amendment §9)
     keywords: list[str]
@@ -89,7 +91,6 @@ class InterviewDetail(BaseModel):
     processing_stage: str | None = None
     error_reason: str | None = None
     created_at: datetime
-    rounds: list[InterviewRoundSummary] = []
 
 
 class AnswerScriptUploadResponse(BaseModel):
@@ -152,15 +153,6 @@ class EvaluationDetailOut(BaseModel):
     questions: list[QuestionEvaluationOut]
 
 
-class InterviewRoundSummary(BaseModel):
-    round_number: int
-    status: str
-    selected_for_next_round: bool | None = None
-    # Task 12 — per-round score surfaced so the dashboard can sort/list by
-    # Round 1 score independently of round 2.
-    score: float | None = None
-    max_score: float | None = None
-    percentage: float | None = None
 
 
 class InterviewListItem(BaseModel):
@@ -179,7 +171,6 @@ class InterviewListItem(BaseModel):
     percentage: float | None = None
     created_at: datetime
     updated_at: datetime
-    rounds: list[InterviewRoundSummary] = []
 
 
 class InterviewListResponse(BaseModel):
@@ -191,3 +182,41 @@ class EvaluationStartResponse(BaseModel):
     interview_id: str
     status: str
 
+
+class MarkAsDoneResponse(BaseModel):
+    success: bool
+    interview_id: str
+    status: str
+    message: str
+
+
+class MCQDaysResponse(BaseModel):
+    days: list[int]
+
+
+class MCQDayResponse(BaseModel):
+    day: int
+    available: bool
+    questions: list[str]
+    question_count: int
+    correct_answers_available: bool
+
+
+class MCQScoreResponse(BaseModel):
+    day: int
+    total_questions: int
+    correct_answers: list[str]
+    candidates: dict[str, dict]
+
+
+class MCQUploadResponse(BaseModel):
+    success: bool
+    day: int
+    scores: dict[str, dict]
+    message: str
+
+
+class MCQDownloadResponse(BaseModel):
+    success: bool
+    day: int
+    filepath: str

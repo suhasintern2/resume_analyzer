@@ -18,6 +18,7 @@ function UploadSection({
   onGenerate,
   generateDisabled,
   error,
+  onGoToMCQ,
 }) {
   const fileInputRef = useRef(null);
   const cameraInputRef = useRef(null);
@@ -149,6 +150,22 @@ function UploadSection({
       <div className={error ? 'alert-box error-alert' : 'alert-box error-alert hidden'} id="error-message">
         <AlertIcon className="alert-icon" />
         <div className="alert-content" id="error-text">{error}</div>
+      </div>
+
+      {/* Task 13 — MCQ Question Bank */}
+      <div className="mcq-bank__home-btn">
+        <button
+          type="button"
+          className="btn btn-primary btn-mcq"
+          id="mcq-round-btn"
+          onClick={onGoToMCQ}
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M9 11l3 3L22 4"/>
+            <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+          </svg>
+          Round 1 — MCQ Question Bank
+        </button>
       </div>
     </section>
   );

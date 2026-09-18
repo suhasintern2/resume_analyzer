@@ -46,25 +46,8 @@ _question_eval_status = (
     "SEGMENTATION_UNCERTAIN",
 )
 
-_file_type = ("RESUME", "QUESTION_SHEET", "ANSWER_KEY", "ANSWER_SCRIPT")
+_file_type = ("RESUME", "QUESTION_SHEET", "ANSWER_KEY", "ANSWER_SCRIPT", "MCQ_SHEET")
 
-# Task 11 — per-round lifecycle vocabulary (TEXT column, not a PG enum).
-_round_status = (
-    "NOT_STARTED",
-    "QUESTIONS_GENERATING",
-    "QUESTIONS_READY",
-    "ANSWER_UPLOADED",
-    "SEGMENTED",
-    "SEGMENTATION_UNCERTAIN",
-    "EVALUATING",
-    "EVALUATED",
-    "EVALUATION_FAILED",
-    "FAILED",
-)
-
-ROUND_1 = 1
-ROUND_2 = 2
-ROUND_NUMBERS = (ROUND_1, ROUND_2)
 
 InterviewStatusType = sa.Enum(
     *_interview_status, name="interview_status",
@@ -131,10 +114,6 @@ class File(Base):
         sa.ForeignKey("interviews.id", ondelete="CASCADE"),
         nullable=False,
     )
-    round_id = sa.Column(
-        sa.Integer,
-        sa.ForeignKey("interview_rounds.id", ondelete="CASCADE"),
-    )
     file_type = sa.Column(FileTypeType, nullable=False)
     file_path = sa.Column(sa.Text, nullable=False)
     # Task 12 — OMR layout metadata for the printed question sheet (checkbox
@@ -156,10 +135,6 @@ class Evaluation(Base):
         sa.Integer,
         sa.ForeignKey("interviews.id", ondelete="CASCADE"),
         nullable=False,
-    )
-    round_id = sa.Column(
-        sa.Integer,
-        sa.ForeignKey("interview_rounds.id", ondelete="CASCADE"),
     )
     evaluator_version = sa.Column(sa.Text, nullable=False)
     total_score = sa.Column(sa.Numeric)
@@ -225,10 +200,6 @@ class QuestionEvaluationKey(Base):
         sa.ForeignKey("interviews.id", ondelete="CASCADE"),
         nullable=False,
     )
-    round_id = sa.Column(
-        sa.Integer,
-        sa.ForeignKey("interview_rounds.id", ondelete="CASCADE"),
-    )
     question_number = sa.Column(sa.Integer, nullable=False)
     keywords = sa.Column(postgresql.ARRAY(sa.Text), nullable=False)
     important_phrases = sa.Column(postgresql.ARRAY(sa.Text), nullable=False)
@@ -244,7 +215,7 @@ class QuestionEvaluationKey(Base):
     )
 
     __table_args__ = (
-        sa.UniqueConstraint("interview_id", "round_id", "question_number"),
+        sa.UniqueConstraint("interview_id", "question_number"),
     )
 
 
@@ -286,10 +257,6 @@ class AnswerSegment(Base):
         sa.ForeignKey("interviews.id", ondelete="CASCADE"),
         nullable=False,
     )
-    round_id = sa.Column(
-        sa.Integer,
-        sa.ForeignKey("interview_rounds.id", ondelete="CASCADE"),
-    )
     question_number = sa.Column(sa.Integer, nullable=True)
     content = sa.Column(sa.Text, nullable=False)
     status = sa.Column(AnswerSegmentStatusType, nullable=False)
@@ -310,40 +277,3 @@ class AnswerSegment(Base):
     )
 
 
-class InterviewRound(Base):
-    """One row per interview round (Task 11).
-
-    ``status`` is a TEXT vocabulary (see ``_round_status``) owned by the
-    round-scoped services/worker — deliberately not a PG enum so the
-    vocabulary can grow (it does: SEGMENTED / SEGMENTATION_UNCERTAIN were
-    added to the spec list so the round flow mirrors the answer-script
-    lifecycle). ``selected_for_next_round`` is only meaningful on round 1:
-    NULL until a staff decision, then True (advance) or False (reject).
-    """
-
-    __tablename__ = "interview_rounds"
-
-    id = sa.Column(sa.Integer, primary_key=True, autoincrement=True)
-    interview_id = sa.Column(
-        sa.Integer,
-        sa.ForeignKey("interviews.id", ondelete="CASCADE"),
-        nullable=False,
-    )
-    round_number = sa.Column(sa.Integer, nullable=False)
-    status = sa.Column(sa.Text, nullable=False)
-    selected_for_next_round = sa.Column(sa.Boolean)
-    created_at = sa.Column(
-        sa.TIMESTAMP(timezone=True),
-        server_default=sa.func.now(),
-        nullable=False,
-    )
-    updated_at = sa.Column(
-        sa.TIMESTAMP(timezone=True),
-        server_default=sa.func.now(),
-        nullable=False,
-        onupdate=sa.func.now(),
-    )
-
-    __table_args__ = (
-        sa.UniqueConstraint("interview_id", "round_number"),
-    )

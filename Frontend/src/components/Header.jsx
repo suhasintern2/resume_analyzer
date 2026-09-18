@@ -18,7 +18,6 @@ export default function Header({ onDashboard, onHome, activePage = 'home' }) {
           <div className="brand-divider"></div>
           <div className="brand-meta">
             <span className="brand-app-name">Resume Analyzer</span>
-            <span className="brand-tagline">Interview Intelligence Studio</span>
           </div>
         </div>
 
@@ -30,7 +29,7 @@ export default function Header({ onDashboard, onHome, activePage = 'home' }) {
             aria-current={activePage === 'dashboard' ? 'page' : undefined}
             title="Open the Interview Dashboard"
           >
-            📋 Dashboard
+             Dashboard
           </button>
 
           {activePage === 'dashboard' && (
@@ -39,15 +38,10 @@ export default function Header({ onDashboard, onHome, activePage = 'home' }) {
               onClick={onHome}
               title="Back to resume upload"
             >
-              ← Upload
+              Upload
             </button>
           )}
         </nav>
-
-        <div className="header-status-badge">
-          <span className="status-dot"></span>
-          <span>Talent Evaluation Ready</span>
-        </div>
       </div>
     </header>
   );
