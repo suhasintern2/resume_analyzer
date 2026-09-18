@@ -10,12 +10,13 @@ import ExportBar from './components/ExportBar';
 import Footer from './components/Footer';
 import Toast from './components/Toast';
 import DashboardPage from './components/DashboardPage';
+import MCQBank from './components/MCQBank';
 import { generateInterviewQA, downloadDocx } from './services/api';
 import { categoryCounts, filterQuestions, normalizeFileName, validateFile } from './utils';
 
 function App() {
   // ---------- page phase ----------
-  // 'upload' | 'loading' | 'result' | 'dashboard'
+  // 'upload' | 'loading' | 'result' | 'dashboard' | 'mcq'
   const [phase, setPhase] = useState('upload');
 
   // ---------- upload ----------
@@ -82,6 +83,11 @@ function App() {
 
   const handleGoHome = useCallback(() => {
     setPhase('upload');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
+
+  const handleGoToMCQ = useCallback(() => {
+    setPhase('mcq');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
 
@@ -239,6 +245,26 @@ function App() {
 
   // ---------- render ----------
 
+  // MCQ Bank gets its own full-page layout (Header + MCQBank + Footer)
+  if (phase === 'mcq') {
+    return (
+      <>
+        <Header
+          onDashboard={handleGoToDashboard}
+          onHome={handleGoHome}
+          activePage="mcq"
+        />
+        <div className="app-layout">
+          <main className="main-content">
+            <MCQBank onToast={showToast} onBack={handleGoHome} />
+          </main>
+          <Footer />
+        </div>
+        <Toast message={toast.message} visible={toast.visible} />
+      </>
+    );
+  }
+
   // Dashboard gets its own full-page layout (Header + DashboardPage + Footer)
   if (phase === 'dashboard') {
     return (
@@ -278,6 +304,7 @@ function App() {
             onGenerate={handleGenerate}
             generateDisabled={phase === 'loading'}
             error={error}
+            onGoToMCQ={handleGoToMCQ}
           />
 
           <LoadingSection

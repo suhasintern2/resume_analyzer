@@ -11,7 +11,6 @@ export default function ScoreOverridePanel({
   originalScore,
   currentOverride,
   maxScore,
-  roundNumber = 1,
   onOverrideApplied,
   onToast,
 }) {
@@ -41,7 +40,6 @@ export default function ScoreOverridePanel({
         questionNumber,
         numScore,
         reason.trim(),
-        roundNumber,
       );
       onToast?.(`Q${questionNumber} score overridden: ${numScore}/${max}`);
       onOverrideApplied?.(result);

@@ -4,6 +4,83 @@ All notable changes to this project are documented here, newest section first.
 
 ---
 
+## Task 13 — MCQ Question Bank: Dataset, Daily Papers, Download, Upload & Scoring
+
+Status: IMPLEMENTED. No tests run — user tests manually (standing hard rule).
+
+Date: 2026-09-18
+
+### Problem
+
+Staff need a structured MCQ question bank with dataset-driven daily question papers. Each day has a unique set of 10 questions drawn from pre-populated dataset columns. Staff download question papers, candidates answer by hand, staff upload completed sheets, and individual scores are computed automatically.
+
+### Fix
+
+**`app/services/mcq_bank.py`** (NEW/REWRITTEN) — Dataset-driven MCQ bank service:
+- `_load_dataset()` reads `generated/mcq_bank/mcq_dataset.json` — a JSON file with `columns` array, each column a list of question objects (`number`, `category`, `question`, `options`, `correct_answer`, `answer`, `plain_answer`, `hr_answer`, `keywords`, `required_concepts`, `important_phrases`)
+- `_get_day_questions(day)` returns 10 questions for a specific day by drawing sequentially from each column index (day-1)
+- `generate_question_paper(day)` creates a printable DOCX with 10 questions, ☐ checkboxes, blank answer lines, and 5 candidate name sections
+- `generate_question_paper_docx(day)` returns DOCX as bytes for in-memory handling
+- `save_question_paper_to_db(day, session)` persists the paper as a RECORD file with file type `MCQ_SHEET`
+- `score_answer_sheet(day, correct_answers, candidate_answers)` compares uploaded answers against the correct answer key and returns individual scores with percentages
+- `parse_uploaded_answer_sheet(text)` extracts candidate names and answer sequences from uploaded text
+- `get_available_days()` returns available days (1-10)
+- `get_day_status(day)` returns day status and questions
+
+**`app/api/routes.py`** — Added 5 MCQ API endpoints:
+- `GET /api/mcq/days` — Get available days list
+- `GET /api/mcq/day/{day}` — Get day status and questions
+- `GET /api/mcq/day/{day}/download` — Download question paper DOCX
+- `POST /api/mcq/day/{day}/upload` — Upload completed answer sheets, get scored results
+- `GET /api/mcq/day/{day}/results` — Get correct answer key for a day
+
+**`app/models/schemas.py`** — Added MCQ response schemas: `MCQDaysResponse`, `MCQDayResponse`, `MCQScoreResponse`, `MCQUploadResponse`, `MCQDownloadResponse`
+
+**`app/services/pipeline_service.py`** — Removed MCQ sheet generation step (now handled by routes/home page, not the interview pipeline). Existing interview flow preserved unchanged.
+
+**`app/config.py`** — Added `MCQ_DATASET_PATH` and `MCQ_RESULTS_DIR` settings.
+
+**`.env.example`** — Added `MCQ_DATASET_PATH` and `MCQ_RESULTS_DIR`.
+
+**`generated/mcq_bank/mcq_dataset.json`** — Pre-populated dataset file (user creates). Format: JSON with `columns` array of question arrays.
+
+### Flow
+
+1. **Home page**: Staff sees "Round 1" button with checkboxes for Days 1-10
+2. **Select a day**: Questions for that day are drawn sequentially from dataset columns
+3. **Download**: Question paper DOCX downloaded (questions + options + answer spaces + 5 candidate name fields)
+4. **Candidates**: Fill in answers by hand
+5. **Upload**: Staff uploads completed sheets
+6. **Scoring**: System extracts candidate names and answers, compares against correct answer key, returns individual scores
+7. **Day progression**: Day 1 → Day 10 sequentially; cannot go back
+
+### Dataset Format
+
+```json
+{
+  "columns": [
+    [{"number": 1, "category": "...", "question": "...", "options": [...], "correct_answer": "...", ...}, ...],
+    [{"number": 1, ...}, ...],
+    ...
+  ]
+}
+```
+
+- Each column has multiple questions
+- Day N draws question index (N-1) from each column
+- 10 questions total per day (one from each column)
+
+### Files touched
+
+**Backend (edited/created):** `app/services/mcq_bank.py` (REWRITTEN),
+`app/api/routes.py`, `app/models/schemas.py`,
+`app/services/pipeline_service.py`, `app/config.py`,
+`.env.example`, `CHANGELOG.md`, `generated/mcq_bank/mcq_dataset.json`
+
+---
+
+## Task 12 (Patch) — TrOCR Line-Slicing Fix & Tesseract Cleanup
+
 ## Task 12 (Patch) — TrOCR Line-Slicing Fix & Tesseract Cleanup
 
 Status: COMPLETED. No tests run — user tests manually (standing hard rule).

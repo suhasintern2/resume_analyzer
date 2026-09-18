@@ -16,6 +16,7 @@ class Settings:
 
     LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "gemini")
     LLM_API_KEY: str = os.getenv("LLM_API_KEY", "")
+    GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
     LLM_MODEL: str = os.getenv("LLM_MODEL", "gemini-3.5-flash")
     LLM_FALLBACK_MODELS: list[str] = [
         m.strip()
@@ -56,6 +57,11 @@ class Settings:
     # A checkbox interior is "marked" when its dark-pixel ratio >= threshold.
     OMR_INK_THRESHOLD: float = float(os.getenv("OMR_INK_THRESHOLD", "0.18"))
 
+    # Task 13 — MCQ Question Bank.
+    MCQ_STORAGE_DIR: str = os.getenv("MCQ_STORAGE_DIR", "generated/mcq_sheets")
+    MCQ_DATASET_PATH: str = os.getenv("MCQ_DATASET_PATH", "generated/mcq_bank/mcq_dataset.json")
+    MCQ_RESULTS_DIR: str = os.getenv("MCQ_RESULTS_DIR", "generated/mcq_results")
+
     LLM_TIMEOUT: float = float(os.getenv("LLM_TIMEOUT_SECONDS", "60"))
 
     MIN_RESUME_TEXT_LENGTH: int = int(os.getenv("MIN_RESUME_TEXT_LENGTH", "200"))
@@ -75,6 +81,9 @@ class Settings:
 
     EVALUATOR_VERSION: str = os.getenv("EVALUATOR_VERSION", "v1.0.0-deterministic")
     JOB_POLL_INTERVAL_SECONDS: float = float(os.getenv("JOB_POLL_INTERVAL_SECONDS", "3.0"))
+
+    SERVER_HOST: str = os.getenv("SERVER_HOST", "0.0.0.0")
+    SERVER_PORT: int = int(os.getenv("SERVER_PORT", "8000"))
 
 
 settings = Settings()

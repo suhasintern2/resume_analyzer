@@ -8,7 +8,6 @@ import { getSegments, reassignSegment } from '../services/api';
 
 export default function SegmentationCorrectionView({
   interviewId,
-  roundNumber = 1,
   onCorrected,
   onToast,
 }) {
@@ -21,14 +20,14 @@ export default function SegmentationCorrectionView({
   const fetchSegments = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await getSegments(interviewId, roundNumber);
+      const data = await getSegments(interviewId);
       setSegments(data.segments || []);
     } catch (err) {
       onToast?.(`Could not load segments: ${err.message}`);
     } finally {
       setLoading(false);
     }
-  }, [interviewId, roundNumber, onToast]);
+  }, [interviewId, onToast]);
 
   useEffect(() => { fetchSegments(); }, [fetchSegments]);
 
@@ -50,7 +49,6 @@ export default function SegmentationCorrectionView({
       interviewId,
       seg.id,
       num,
-      roundNumber,
     );
       onToast?.(`Segment reassigned to Q${num}.`);
       // Refresh segments

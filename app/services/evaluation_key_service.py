@@ -24,29 +24,16 @@ def save_interview_evaluation_keys(
     *,
     interview_id: int,
     result: InterviewResult,
-    round_id: int | None = None,
 ) -> int:
     """Persist one evaluation key row per question, replacing any existing
-    keys for the same interview + round.  ``round_id`` is None for legacy
-    (pre-Task-11) single-round records. Returns the number of rows saved."""
-    if round_id is None:
-        existing = list(
-            session.scalars(
-                select(QuestionEvaluationKey).where(
-                    QuestionEvaluationKey.interview_id == interview_id,
-                    QuestionEvaluationKey.round_id.is_(None),
-                )
-            ).all()
-        )
-    else:
-        existing = list(
-            session.scalars(
-                select(QuestionEvaluationKey).where(
-                    QuestionEvaluationKey.interview_id == interview_id,
-                    QuestionEvaluationKey.round_id == round_id,
-                )
-            ).all()
-        )
+    keys for the same interview. Returns the number of rows saved."""
+    existing = list(
+        session.scalars(
+            select(QuestionEvaluationKey).where(
+                QuestionEvaluationKey.interview_id == interview_id,
+            )
+        ).all()
+    )
     for key in existing:
         session.delete(key)
     session.flush()
@@ -55,15 +42,14 @@ def save_interview_evaluation_keys(
     for question in result.questions:
         key = QuestionEvaluationKey(
             interview_id=interview_id,
-            round_id=round_id,
             question_number=question.number,
             keywords=list(question.keywords),
             important_phrases=list(question.important_phrases),
             question_text=question.question,
             sample_answer=question.answer,
             category=question.category,
-            correct_option=question.correct_option,
-            options=list(question.options) if question.options else None,
+            correct_option=None,
+            options=None,
         )
         session.add(key)
         session.flush()  # obtain key.id for the concept children

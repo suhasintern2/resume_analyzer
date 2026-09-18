@@ -1,0 +1,1 @@
+- [Fixed dashboard empty issue after delete/reupload](dashboard-empty-fix.jsonl) — Fixed transient file system errors causing interview records not to be persisted after deletions

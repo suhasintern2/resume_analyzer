@@ -9,7 +9,6 @@ import QuestionEvaluation from './QuestionEvaluation';
 
 export default function EvaluationSummary({
   interviewId,
-  roundNumber = 1,
   status,
   onToast,
 }) {
@@ -22,7 +21,7 @@ export default function EvaluationSummary({
     setLoading(true);
     setError('');
     try {
-      const data = await getEvaluation(interviewId, roundNumber);
+      const data = await getEvaluation(interviewId);
       setEvalData(data);
     } catch (err) {
       if (!err.message.includes('No evaluation found')) {
@@ -31,7 +30,7 @@ export default function EvaluationSummary({
     } finally {
       setLoading(false);
     }
-  }, [interviewId, roundNumber, status]);
+  }, [interviewId, status]);
 
   useEffect(() => { fetch(); }, [fetch]);
 
@@ -82,7 +81,6 @@ export default function EvaluationSummary({
               key={q.question_number}
               q={q}
               interviewId={interviewId}
-              roundNumber={roundNumber}
               onOverrideApplied={() => fetch()}
               onToast={onToast}
             />

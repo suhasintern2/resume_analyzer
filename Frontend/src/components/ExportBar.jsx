@@ -34,7 +34,7 @@ function ExportBar({ onGenerateAgain, onPrint, onDownload, downloadingRole, onGo
             disabled={downloading}
             onClick={onGoToDashboard}
           >
-            📋 View in Dashboard
+            Dashboard
           </button>
         )}
       </div>

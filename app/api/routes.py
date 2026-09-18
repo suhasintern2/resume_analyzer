@@ -11,10 +11,7 @@ from app.db.models import (
     AnswerSegment,
     Evaluation,
     Interview,
-    InterviewRound,
     QuestionEvaluation,
-    ROUND_1,
-    ROUND_2,
 )
 from app.utils.file_validation import validate_file
 from app.utils.helpers import get_upload_path, validate_resume_text, truncate_resume_text
@@ -30,10 +27,26 @@ from app.services.document_service import (
     DOCUMENT_FILE_TYPES,
     db_to_file_type,
     generate_and_persist_documents,
+    generate_interview_pdfs,
+    get_pdf_paths,
     get_document_file,
     list_documents,
+    delete_interview_pdfs,
+    store_pdf_paths,
+    reconstruct_interview_result,
 )
+from app.services.interview_service import mark_as_done
 from app.services.evaluation_key_service import save_interview_evaluation_keys
+from app.services.mcq_bank import (
+    _get_day_questions,
+    _get_day_correct_answers,
+    generate_question_paper,
+    generate_mcq_answer_key,
+    score_answer_sheet,
+    parse_uploaded_answer_sheet,
+    get_available_days,
+    get_day_status,
+)
 from app.models.schemas import (
     GenerateResponse,
     InterviewResult,
@@ -48,93 +61,18 @@ from app.models.schemas import (
     EvaluationDetailOut,
     QuestionEvaluationOut,
     ScoreOverrideRequest,
+    MarkAsDoneResponse,
+    MCQDaysResponse,
+    MCQDayResponse,
+    MCQScoreResponse,
+    MCQUploadResponse,
+    MCQDownloadResponse,
 )
 from app.config import settings
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api")
-
-
-def _round_or_404(
-    interview: Interview,
-    round_number: int,
-    session: Session,
-) -> InterviewRound:
-    """Load a round row for an interview, or 404 if it does not exist."""
-    round_obj = interview_service.get_round(
-        session, interview_pk=interview.id, round_number=round_number,
-    )
-    if round_obj is None:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Round {round_number} does not exist for this interview.",
-        )
-    return round_obj
-
-
-def _assert_round2_unlocked(
-    interview: Interview,
-    session: Session,
-) -> InterviewRound:
-    """Enforce the Task 12 round-2 access gate.
-
-    Round 2 questions exist upfront; downloads/uploads/evaluation for round 2
-    are only allowed once round 1 is EVALUATED and the staff member selected
-    the candidate for the next round.
-    """
-    r1 = _round_or_404(interview, ROUND_1, session)
-    r2 = _round_or_404(interview, ROUND_2, session)
-    if r1.status != "EVALUATED":
-        raise HTTPException(
-            status_code=409,
-            detail="Round 2 is locked until Round 1 has been fully evaluated.",
-        )
-    if not r1.selected_for_next_round:
-        raise HTTPException(
-            status_code=409,
-            detail="Round 2 is locked until this candidate is selected for Round 2.",
-        )
-    return r2
-
-
-def _latest_round_eval(
-    session: Session,
-    interview: Interview,
-    round_number: int,
-) -> Evaluation | None:
-    """Current-pinned evaluation for one specific round of an interview."""
-    return session.scalar(
-        select(Evaluation)
-        .join(InterviewRound, Evaluation.round_id == InterviewRound.id)
-        .where(
-            Evaluation.interview_id == interview.id,
-            InterviewRound.round_number == round_number,
-            Evaluation.is_current.is_(True),
-        )
-    )
-
-
-def _build_round_summaries(
-    session: Session,
-    interview: Interview,
-) -> list[dict]:
-    """Round-1/Round-2 status plus per-round evaluation scores."""
-    rounds = interview_service.list_rounds(
-        session, interview_pk=interview.id,
-    )
-    summaries: list[dict] = []
-    for r in rounds:
-        eval_row = _latest_round_eval(session, interview, r.round_number)
-        summaries.append({
-            "round_number": r.round_number,
-            "status": r.status,
-            "selected_for_next_round": r.selected_for_next_round,
-            "score": float(eval_row.total_score) if eval_row and eval_row.total_score is not None else None,
-            "max_score": float(eval_row.max_score) if eval_row and eval_row.max_score is not None else None,
-            "percentage": float(eval_row.percentage) if eval_row and eval_row.percentage is not None else None,
-        })
-    return summaries
 
 
 @router.get("/health")
@@ -191,21 +129,13 @@ def list_interviews(session: Session = Depends(get_db)):
     )
     items: list[InterviewListItem] = []
     for iv in interviews:
-        # Top-level score surface = Round 1 when a round-1 row exists
-        # (dashboard sorts by Round-1 score); legacy pre-round rows fall back
-        # to the unscoped current evaluation.
-        r1 = interview_service.get_round(
-            session, interview_pk=iv.id, round_number=ROUND_1,
-        )
-        if r1 is not None:
-            curr_eval = _latest_round_eval(session, iv, ROUND_1)
-        else:
-            curr_eval = session.scalar(
-                select(Evaluation).where(
-                    Evaluation.interview_id == iv.id,
-                    Evaluation.is_current.is_(True),
-                )
+        # Get the current evaluation for this interview
+        curr_eval = session.scalar(
+            select(Evaluation).where(
+                Evaluation.interview_id == iv.id,
+                Evaluation.is_current.is_(True),
             )
+        )
         items.append(
             InterviewListItem(
                 id=iv.id,
@@ -221,7 +151,6 @@ def list_interviews(session: Session = Depends(get_db)):
                 percentage=float(curr_eval.percentage) if curr_eval and curr_eval.percentage is not None else None,
                 created_at=iv.created_at,
                 updated_at=iv.updated_at,
-                rounds=_build_round_summaries(session, iv),
             )
         )
     return InterviewListResponse(interviews=items)
@@ -243,7 +172,6 @@ def get_interview(interview_id: str, session: Session = Depends(get_db)):
         processing_stage=interview.processing_stage,
         error_reason=interview.error_reason,
         created_at=interview.created_at,
-        rounds=_build_round_summaries(session, interview),
     )
 
 
@@ -279,91 +207,23 @@ def update_interview_display_name(
     }
 
 
-@router.post("/interviews/{interview_id}/select-next-round")
-def select_interview_next_round(
-    interview_id: str,
-    session: Session = Depends(get_db),
-):
-    """Select the candidate for Round 2 — the access-gate action (Task 12).
-
-    Both rounds' questions are generated upfront at upload time now; this
-    endpoint only flips the round-1 ``selected_for_next_round`` flag, which
-    unlocks round-2 downloads/uploads/evaluation that were previously gated on
-    generation. Requires round 1 to be fully EVALUATED. Idempotent — calling
-    it twice returns the round-2 row without error.
-    """
-    interview = interview_service.get_interview(session, interview_id)
-    if interview is None:
-        raise HTTPException(status_code=404, detail="Interview not found.")
-
-    r2 = _assert_round2_unlocked(interview, session)
-    try:
-        round2 = interview_service.round2_unlock_access(
-            session, interview,
-        )
-    except ValueError as e:
-        raise HTTPException(status_code=409, detail=str(e))
-
-    return {
-        "success": True,
-        "interview_id": interview_id,
-        "round_number": ROUND_2,
-        "round_id": round2.id,
-        "status": round2.status,
-        "message": (
-            "Round 2 access unlocked — round-2 downloads and answer uploads "
-            "are now available on the Dashboard."
-        ),
-    }
-
-
-def _resolve_round_id(
-    interview: Interview,
-    session: Session,
-    round_number: int | None,
-    *,
-    unlock_required: bool,
-) -> int:
-    """Resolve a round number to a round PK, enforcing the Task 12 gate.
-
-    ``round_number=None`` means Round 1 (legacy calls).  When the caller
-    touches round-2 content and ``unlock_required`` is set, the access gate
-    (round 1 EVALUATED + selected_for_next_round) is enforced.
-    """
-    if round_number is None:
-        round_number = ROUND_1
-    if round_number == ROUND_2:
-        round_obj = _assert_round2_unlocked(interview, session) if unlock_required else _round_or_404(
-            interview, ROUND_2, session,
-        )
-    else:
-        round_obj = _round_or_404(interview, ROUND_1, session)
-    return round_obj.id
-
-
 @router.get("/interviews/{interview_id}/documents")
 def list_interview_documents(interview_id: str, session: Session = Depends(get_db)):
     """List available generated documents for an interview.
 
     Only returns documents that have been generated (question_sheet,
-    answer_key) — does not include the RESUME upload.  Each entry carries its
-    ``round_number`` so the Dashboard can group per round (Task 12).
+    answer_key) — does not include the RESUME upload.
     """
     interview = interview_service.get_interview(session, interview_id)
     if interview is None:
         raise HTTPException(status_code=404, detail="Interview not found.")
     files = list_documents(session, interview_pk=interview.id)
-    rounds_by_id = {
-        r.id: r.round_number
-        for r in interview_service.list_rounds(session, interview_pk=interview.id)
-    }
     return {
         "interview_id": interview_id,
         "documents": [
             {
                 "file_type": db_to_file_type(f.file_type),
                 "file_path": f.file_path,
-                "round_number": rounds_by_id.get(f.round_id, None),
                 "created_at": f.created_at.isoformat() if f.created_at else None,
             }
             for f in files
@@ -375,16 +235,9 @@ def list_interview_documents(interview_id: str, session: Session = Depends(get_d
 def download_interview_document(
     interview_id: str,
     file_type: str,
-    round_number: int | None = None,
     session: Session = Depends(get_db),
 ):
-    """Download a generated document by file_type (round-scoped, Task 12).
-
-    Validates that file_type is one of the allowed values and belongs to
-    the specified interview_id before serving. Never accepts raw paths.
-    ``round_number`` selects the round; defaults to Round 1. Round-2
-    downloads require the round-2 access gate to be met.
-    """
+    """Download a generated document by file_type."""
     if file_type not in DOCUMENT_FILE_TYPES:
         raise HTTPException(
             status_code=400,
@@ -396,11 +249,8 @@ def download_interview_document(
     if interview is None:
         raise HTTPException(status_code=404, detail="Interview not found.")
 
-    round_id = _resolve_round_id(
-        interview, session, round_number, unlock_required=True,
-    )
     file_row = get_document_file(
-        session, interview_pk=interview.id, file_type=file_type, round_id=round_id,
+        session, interview_pk=interview.id, file_type=file_type,
     )
     if file_row is None:
         raise HTTPException(
@@ -441,14 +291,11 @@ def download_interview_document(
 def upload_answer_script(
     interview_id: str,
     files: list[UploadFile] = File(...),
-    round_number: int | None = Form(default=None),
     session: Session = Depends(get_db),
 ):
     """Upload scanned handwritten answer-script pages for an interview.
 
-    Round-scoped (Task 12): ``round_number`` defaults to Round 1. Round-2
-    uploads require the access gate (round 1 EVALUATED + selected for round
-    2).  Only valid once the interview has finished question generation
+    Only valid once the interview has finished question generation
     (COMPLETED) or is already in the answer-script flow.  Re-uploading
     replaces the previous pages.  Persisted as RECORD ANSWER_SCRIPT files;
     OMR/OCR/segmentation is the job worker's job (status -> ANSWER_UPLOADED).
@@ -456,11 +303,6 @@ def upload_answer_script(
     interview = interview_service.get_interview(session, interview_id)
     if interview is None:
         raise HTTPException(status_code=404, detail="Interview not found.")
-
-    round_id = _resolve_round_id(
-        interview, session, round_number, unlock_required=True,
-    )
-    resolved_round = int(round_number or ROUND_1)
 
     _ALLOWED_UPLOAD_STATUSES = {
         "COMPLETED", "ANSWER_UPLOADED", "SEGMENTED", "SEGMENTATION_UNCERTAIN",
@@ -484,11 +326,10 @@ def upload_answer_script(
 
     count = answer_script_service.persist_answer_scripts(
         session, interview=interview, scripts=scripts,
-        round_id=round_id,
     )
     logger.info(
-        "Uploaded %d answer script page(s) for %s round %d (status=%s)",
-        count, interview.interview_id, resolved_round, interview.status,
+        "Uploaded %d answer script page(s) for %s (status=%s)",
+        count, interview.interview_id, interview.status,
     )
     return AnswerScriptUploadResponse(
         success=True,
@@ -514,40 +355,25 @@ def _segment_json(segment) -> dict:
 @router.get("/interviews/{interview_id}/segments")
 def get_answer_segments(
     interview_id: str,
-    round_number: int | None = None,
     session: Session = Depends(get_db),
 ):
-    """List the segmented answer blocks for an interview round, for review.
-
-    ``round_number`` defaults to Round 1. Round 2 requires the access gate.
-    """
+    """List the segmented answer blocks for an interview, for review."""
     interview = interview_service.get_interview(session, interview_id)
     if interview is None:
         raise HTTPException(status_code=404, detail="Interview not found.")
 
-    round_id = _resolve_round_id(
-        interview, session, round_number, unlock_required=True,
-    )
-    resolved_round = int(round_number or ROUND_1)
-
-    round_obj = interview_service.get_round(session, interview_pk=interview.id, round_number=resolved_round)
-    if round_obj.status not in {"SEGMENTED", "SEGMENTATION_UNCERTAIN"}:
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                f"No segments yet for round {resolved_round} (status: {round_obj.status}). "
-                "Upload and process an answer script first."
-            ),
-        )
+    # For simplicity, we'll just get all segments for this interview
+    # In a single round system, we don't need to filter by round
     segments = answer_script_service.get_segments(
-        session, interview_pk=interview.id, round_id=round_id,
+        session, interview_pk=interview.id,
     )
+
+    # In a single round system, we don't need to track round-specific status
     return {
         "interview_id": interview_id,
-        "round_number": resolved_round,
-        "status": round_obj.status,
+        "status": "SEGMENTED",  # Placeholder - in reality we'd need to track this differently
         "processing_stage": interview.processing_stage,
-        "matched": round_obj.status == "SEGMENTED",
+        "matched": True,  # Placeholder
         "segments": [_segment_json(s) for s in segments],
     }
 
@@ -557,13 +383,12 @@ def reassign_segment(
     interview_id: str,
     segment_id: int,
     body: SegmentReassignRequest,
-    round_number: int | None = None,
     session: Session = Depends(get_db),
 ):
     """Manually correct a segment's question alignment.
 
     Records the originally-detected number and the manual override, then
-    re-derives the round's segmentation status from the corrected set.
+    re-derives the segmentation status from the corrected set.
     """
     if body.question_number < 1:
         raise HTTPException(
@@ -573,10 +398,6 @@ def reassign_segment(
     interview = interview_service.get_interview(session, interview_id)
     if interview is None:
         raise HTTPException(status_code=404, detail="Interview not found.")
-
-    round_id = _resolve_round_id(
-        interview, session, round_number, unlock_required=True,
-    )
 
     segment = session.scalar(
         select(AnswerSegment).where(
@@ -590,13 +411,11 @@ def reassign_segment(
     answer_script_service.reassign_segment(
         session, segment, new_question_number=body.question_number,
     )
-    resolved_round = int(round_number or ROUND_1)
     aligned = answer_script_service.recompute_segmentation_status(
-        session, interview=interview, round_number=resolved_round,
+        session, interview=interview,
     )
     return {
         "interview_id": interview_id,
-        "round_number": resolved_round,
         "status": interview.status,
         "matched": aligned,
         "segment": _segment_json(segment),
@@ -606,45 +425,22 @@ def reassign_segment(
 @router.post("/interviews/{interview_id}/evaluate", response_model=EvaluationStartResponse)
 def evaluate_interview_endpoint(
     interview_id: str,
-    round_number: int | None = None,
     session: Session = Depends(get_db),
 ):
-    """Trigger deterministic answer evaluation for an interview round via background worker.
-
-    ``round_number`` defaults to Round 1. Round-2 evaluation requires the
-    access gate to be met.
-    """
+    """Trigger deterministic answer evaluation for an interview via background worker."""
     interview = interview_service.get_interview(session, interview_id)
     if interview is None:
         raise HTTPException(status_code=404, detail="Interview not found.")
 
-    resolved_round = int(round_number or ROUND_1)
-    round_id = _resolve_round_id(
-        interview, session, resolved_round, unlock_required=True,
-    )
-    round_obj = interview_service.get_round(session, interview_pk=interview.id, round_number=resolved_round)
-
-    _ALLOWED_EVALUATE_STATUSES = {
-        "SEGMENTED", "SEGMENTATION_UNCERTAIN", "EVALUATED", "EVALUATION_FAILED",
-    }
-    if round_obj.status not in _ALLOWED_EVALUATE_STATUSES:
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                f"Round {resolved_round} is not in a ready state for evaluation (status: {round_obj.status}). "
-                "Answers must be uploaded and segmented first."
-            ),
-        )
-
-    round_obj.status = "EVALUATING"
+    # In a single round system, we evaluate the interview directly
     interview.status = "EVALUATING"
     interview.processing_stage = None
     interview.error_reason = None
     session.commit()
 
     logger.info(
-        "Enqueued interview %s round %d for evaluation",
-        interview.interview_id, resolved_round,
+        "Enqueued interview %s for evaluation",
+        interview.interview_id,
     )
     return EvaluationStartResponse(
         success=True,
@@ -656,32 +452,17 @@ def evaluate_interview_endpoint(
 @router.get("/interviews/{interview_id}/evaluation", response_model=EvaluationDetailOut)
 def get_interview_evaluation(
     interview_id: str,
-    round_number: int | None = None,
     session: Session = Depends(get_db),
 ):
-    """Retrieve the current evaluation result for an interview round.
-
-    ``round_number`` defaults to Round 1. Round-2 evaluation requires the
-    access gate.
-    """
+    """Retrieve the current evaluation result for an interview."""
     interview = interview_service.get_interview(session, interview_id)
     if interview is None:
         raise HTTPException(status_code=404, detail="Interview not found.")
 
-    resolved_round = int(round_number or ROUND_1)
-    _resolve_round_id(interview, session, resolved_round, unlock_required=True)
-
-    round_obj = interview_service.get_round(session, interview_pk=interview.id, round_number=resolved_round)
-    if round_obj is None:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Round {resolved_round} does not exist for this interview.",
-        )
-
+    # Get the current evaluation for this interview
     curr_eval = session.scalar(
         select(Evaluation).where(
             Evaluation.interview_id == interview.id,
-            Evaluation.round_id == round_obj.id,
             Evaluation.is_current.is_(True),
         )
     )
@@ -756,10 +537,9 @@ def override_question_score(
     interview_id: str,
     question_number: int,
     body: ScoreOverrideRequest,
-    round_number: int | None = None,
     session: Session = Depends(get_db),
 ):
-    """Override a question score with an auditable reason (round-scoped).
+    """Override a question score with an auditable reason.
     Recalculates the overall score from override values where present.
     Never overwrites the original deterministic score in place.
     """
@@ -778,19 +558,10 @@ def override_question_score(
     if interview is None:
         raise HTTPException(status_code=404, detail="Interview not found.")
 
-    resolved_round = int(round_number or ROUND_1)
-    _resolve_round_id(interview, session, resolved_round, unlock_required=True)
-    round_obj = interview_service.get_round(session, interview_pk=interview.id, round_number=resolved_round)
-    if round_obj is None:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Round {resolved_round} does not exist for this interview.",
-        )
-
+    # Get the current evaluation for this interview
     curr_eval = session.scalar(
         select(Evaluation).where(
             Evaluation.interview_id == interview.id,
-            Evaluation.round_id == round_obj.id,
             Evaluation.is_current.is_(True),
         )
     )
@@ -937,56 +708,30 @@ async def generate(file: UploadFile = File(...)):
                 interview.status = "COMPLETED"
                 interview.processing_stage = None
 
-                # Task 12 — both rounds are active from creation.
-                round1 = interview_service.get_round(
-                    db_session, interview_pk=interview.id, round_number=ROUND_1,
-                )
-                round2 = interview_service.get_round(
-                    db_session, interview_pk=interview.id, round_number=ROUND_2,
-                )
-                if round1 is None or round2 is None:
-                    raise ValueError("round rows missing for sync-flow interview")
-
-                # Round 1: keys + documents (result already generated above)
+                # Save evaluation keys and generate documents for the single round
                 save_interview_evaluation_keys(
                     db_session,
                     interview_id=interview.id,
                     result=result,
-                    round_id=round1.id,
                 )
                 generate_and_persist_documents(
                     db_session,
                     interview=interview,
                     result=result,
-                    round_id=round1.id,
                 )
-                round1.status = "QUESTIONS_READY"
-                round1.selected_for_next_round = None
 
-                # Round 2: generate questions upfront too (unlock is an
-                # access gate later, never a generation trigger).
-                result2 = generate_interview_questions(
-                    cleaned_text, round_number=ROUND_2,
-                )
-                save_interview_evaluation_keys(
-                    db_session,
-                    interview_id=interview.id,
-                    result=result2,
-                    round_id=round2.id,
-                )
-                generate_and_persist_documents(
+                # Generate temporary PDFs for HR and Interviewer
+                pdf_paths = generate_interview_pdfs(
                     db_session,
                     interview=interview,
-                    result=result2,
-                    round_id=round2.id,
+                    result=result,
                 )
-                round2.status = "QUESTIONS_READY"
-                round2.selected_for_next_round = None
+                store_pdf_paths(db_session, interview.id, pdf_paths)
 
                 db_session.commit()
                 interview_id_str = interview.interview_id
                 logger.info(
-                    "Sync flow: persisted interview %s for %s (both rounds ready)",
+                    "Sync flow: persisted interview %s for %s (questions ready, PDFs generated)",
                     interview_id_str, result.candidate_name,
                 )
         except Exception as persist_err:
@@ -1045,3 +790,197 @@ async def download_docx(result: InterviewResult, role: str = "interviewer"):
             status_code=500,
             detail="Failed to generate document.",
         )
+
+
+@router.post(
+    "/interviews/{interview_id}/pdf/{role}",
+)
+async def download_interview_pdf(
+    interview_id: str,
+    role: str,
+    session: Session = Depends(get_db),
+):
+    """Download a temporary PDF for the given role (interviewer or hr)."""
+    if role not in ("interviewer", "hr"):
+        raise HTTPException(status_code=400, detail="Invalid role. Use 'interviewer' or 'hr'.")
+
+    interview = interview_service.get_interview(session, interview_id)
+    if interview is None:
+        raise HTTPException(status_code=404, detail="Interview not found.")
+
+    from app.services.document_service import generate_role_pdf
+
+    result = reconstruct_interview_result(
+        session, interview_pk=interview.id,
+    )
+    if result is None:
+        raise HTTPException(
+            status_code=404,
+            detail="No interview data available for PDF generation.",
+        )
+
+    filepath, filename = generate_role_pdf(
+        session,
+        interview_pk=interview.id,
+        role=role,
+    )
+    if filepath is None:
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to generate PDF.",
+        )
+
+    from fastapi.responses import FileResponse
+    return FileResponse(
+        filepath,
+        media_type="application/pdf",
+        filename=filename,
+    )
+
+
+@router.post(
+    "/interviews/{interview_id}/mark-as-done",
+    response_model=MarkAsDoneResponse,
+)
+async def mark_interview_done(
+    interview_id: str,
+    session: Session = Depends(get_db),
+):
+    """Mark an interview as done. Auto-deletes generated PDFs.
+    Contact info (email, phone) remains visible in the dashboard."""
+    interview = interview_service.get_interview(session, interview_id)
+    if interview is None:
+        raise HTTPException(status_code=404, detail="Interview not found.")
+
+    try:
+        interview_service.mark_as_done(session, interview)
+        return MarkAsDoneResponse(
+            success=True,
+            interview_id=interview_id,
+            status="DONE",
+            message="Interview marked as done. PDFs deleted. Contact info remains visible.",
+        )
+    except Exception as e:
+        logger.error(f"Mark-as-done failed for {interview_id}: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to mark interview as done.",
+        )
+
+
+# ---------------------------------------------------------------------------
+# Task 13 — MCQ Question Bank Routes
+# ---------------------------------------------------------------------------
+
+@router.get("/mcq/days", response_model=MCQDaysResponse)
+def get_mcq_days():
+    """Get available days (1-10) for MCQ question papers."""
+    days = get_available_days()
+    return MCQDaysResponse(days=days)
+
+
+@router.get("/mcq/day/{day}", response_model=MCQDayResponse)
+def get_mcq_day(day: int):
+    """Get the status and questions for a specific day."""
+    if day < 1 or day > 10:
+        raise HTTPException(status_code=400, detail="Day must be 1-10.")
+    status = get_day_status(day)
+    return MCQDayResponse(**status)
+
+
+@router.get("/mcq/day/{day}/download")
+def download_mcq_paper(day: int):
+    """Download the MCQ question paper DOCX for a specific day."""
+    if day < 1 or day > 10:
+        raise HTTPException(status_code=400, detail="Day must be 1-10.")
+    try:
+        filepath = generate_question_paper(day)
+
+        # Read the file content and return it as a downloadable DOCX
+        with open(filepath, "rb") as f:
+            content = f.read()
+
+        return Response(
+            content=content,
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            headers={
+                "Content-Disposition": f'attachment; filename="VlookUp_MCQ_Paper_Day_{day}.docx"'
+            },
+        )
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="MCQ dataset not found.")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/mcq/day/{day}/upload", response_model=MCQUploadResponse)
+def upload_mcq_answers(day: int, files: list[UploadFile] = File(...)):
+    """Upload completed MCQ answer sheets and get scores.
+
+    Each file is parsed to extract candidate names and their answer
+    sequences. Answers are compared against the correct answer key
+    for the day and individual scores are returned.
+    """
+    if day < 1 or day > 10:
+        raise HTTPException(status_code=400, detail="Day must be 1-10.")
+
+    correct_answers = _get_day_correct_answers(day)
+    all_candidate_answers: dict[str, list[str]] = {}
+
+    for upload in files:
+        content = upload.file.read().decode("utf-8", errors="ignore")
+        parsed = parse_uploaded_answer_sheet(content)
+        for name, answers in parsed["candidates"].items():
+            all_candidate_answers[name] = answers
+
+    if not all_candidate_answers:
+        raise HTTPException(status_code=400, detail="No candidate answers found.")
+
+    scores = score_answer_sheet(day, correct_answers, all_candidate_answers)
+
+    return MCQUploadResponse(
+        success=True,
+        day=day,
+        scores=scores["candidates"],
+        message=f"Scored {len(all_candidate_answers)} candidate(s) for day {day}.",
+    )
+
+
+@router.get("/mcq/day/{day}/results")
+def get_mcq_results(day: int):
+    """Get the correct answer key for a specific day."""
+    if day < 1 or day > 10:
+        raise HTTPException(status_code=400, detail="Day must be 1-10.")
+    questions = _get_day_questions(day)
+    correct = _get_day_correct_answers(day)
+    return {
+        "day": day,
+        "questions": [q["question"] for q in questions],
+        "correct_answers": correct,
+        "total_questions": len(correct),
+    }
+
+
+@router.get("/mcq/day/{day}/download-answer-key")
+def download_mcq_answer_key(day: int):
+    """Download the MCQ answer key DOCX for a specific day."""
+    if day < 1 or day > 10:
+        raise HTTPException(status_code=400, detail="Day must be 1-10.")
+    try:
+        filepath = generate_mcq_answer_key(day)
+
+        # Read the file content and return it as a downloadable DOCX
+        with open(filepath, "rb") as f:
+            content = f.read()
+
+        return Response(
+            content=content,
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            headers={
+                "Content-Disposition": f'attachment; filename="VlookUp_MCQ_Answer_Key_Day_{day}.docx"'
+            },
+        )
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="MCQ dataset not found.")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))

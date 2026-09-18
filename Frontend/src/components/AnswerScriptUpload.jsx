@@ -1,7 +1,6 @@
 /**
- * AnswerScriptUpload — upload handwritten answer script pages (Task 12 revision).
+ * AnswerScriptUpload — upload handwritten answer script pages.
  * Accepts PDF/JPG/JPEG/PNG, respects ANSWER_SCRIPT_MAX_FILE_SIZE_MB (10 MB default).
- * Round-aware: uploads are scoped to a round via the `roundNumber` prop (default 1).
  */
 import { useRef, useState } from 'react';
 import { uploadAnswerScript } from '../services/api';
@@ -24,7 +23,6 @@ function validateFiles(files) {
 
 export default function AnswerScriptUpload({
   interviewId,
-  roundNumber = 1,
   status,
   onUploaded,
   onToast,
@@ -59,10 +57,10 @@ export default function AnswerScriptUpload({
     setUploading(true);
     setError('');
     try {
-      await uploadAnswerScript(interviewId, selectedFiles, roundNumber);
+      await uploadAnswerScript(interviewId, selectedFiles);
       setSelectedFiles([]);
       if (fileInputRef.current) fileInputRef.current.value = '';
-      onToast?.(`Answer script uploaded for Round ${roundNumber}.`);
+      onToast?.('Answer script uploaded.');
       onUploaded?.();
     } catch (err) {
       setError(err.message || 'Upload failed. Please try again.');
@@ -74,7 +72,7 @@ export default function AnswerScriptUpload({
   return (
     <div className="answer-script-upload">
       <div className="answer-script-upload__title">
-        Upload Answer Script — Round {roundNumber}
+        Upload Answer Script
       </div>
 
       <div
@@ -85,7 +83,7 @@ export default function AnswerScriptUpload({
         role="button"
         tabIndex={0}
         onKeyDown={(e) => e.key === 'Enter' && fileInputRef.current?.click()}
-        aria-label={`Upload answer script pages for Round ${roundNumber}`}
+        aria-label="Upload answer script pages"
       >
         <input
           ref={fileInputRef}

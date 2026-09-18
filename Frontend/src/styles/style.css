@@ -2071,6 +2071,17 @@ button, input {
     font-family: 'Courier New', monospace;
 }
 
+.interview-card__delete {
+    color: #ef4444;
+    font-size: 0.75rem;
+    margin-left: auto;
+    opacity: 0.5;
+    transition: opacity 0.15s;
+}
+.interview-card__delete:hover {
+    opacity: 1;
+}
+
 .interview-card__meta {
     align-items: center;
     display: flex;
@@ -2496,4 +2507,426 @@ button, input {
     .dashboard-page__topbar { flex-direction: column; align-items: flex-start; }
     .evidence-table { font-size: 0.75rem; }
     .header-nav { margin-right: 8px; }
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+   MCQ Question Bank (Task 13)
+   ───────────────────────────────────────────────────────────────────── */
+
+.mcq-bank {
+    padding: clamp(16px, 3vw, 28px) clamp(12px, 3vw, 24px);
+}
+
+.mcq-bank__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+}
+
+.mcq-bank__heading h2 {
+    font-size: clamp(1.2rem, 3vw, 1.5rem);
+    font-weight: 800;
+    color: var(--text-heading);
+    margin-bottom: 4px;
+}
+
+.mcq-bank__heading p {
+    font-size: clamp(0.88rem, 2vw, 0.94rem);
+    color: var(--text-muted);
+}
+
+.mcq-bank__home-btn {
+    margin-top: 16px;
+}
+
+.btn-mcq {
+    background-color: var(--brand-primary);
+    border-color: var(--brand-primary);
+    box-shadow: 0 1px 3px rgba(122, 160, 49, 0.3);
+}
+
+.btn-mcq:hover {
+    background-color: var(--brand-primary-hover);
+    border-color: var(--brand-primary-hover);
+}
+
+/* Progress bar */
+.mcq-bank__progress {
+    margin-bottom: 24px;
+}
+
+.mcq-bank__progress-bar {
+    width: 100%;
+    height: 8px;
+    background-color: var(--brand-primary-surface);
+    border-radius: var(--radius-full);
+    overflow: hidden;
+    border: 1px solid var(--brand-primary-border);
+}
+
+.mcq-bank__progress-fill {
+    height: 100%;
+    background-color: var(--brand-primary);
+    border-radius: var(--radius-full);
+    transition: width 0.5s ease-in-out;
+}
+
+.mcq-bank__progress-text {
+    font-size: 0.82rem;
+    color: var(--text-muted);
+    font-weight: 600;
+    margin-top: 6px;
+    display: block;
+}
+
+/* Day grid */
+.mcq-bank__section-title {
+    font-size: clamp(0.95rem, 2.2vw, 1.05rem);
+    font-weight: 800;
+    color: var(--text-heading);
+    margin-bottom: 12px;
+    text-transform: uppercase;
+    letter-spacing: -0.01em;
+}
+
+.mcq-bank__days {
+    margin-bottom: 28px;
+}
+
+.mcq-bank__day-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(70px, 1fr));
+    gap: 10px;
+}
+
+.mcq-bank__day-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 12px 8px;
+    border: 2px solid var(--border-main);
+    border-radius: var(--radius-md);
+    background-color: #FFFFFF;
+    color: var(--text-body);
+    font-size: clamp(1rem, 2.5vw, 1.1rem);
+    font-weight: 700;
+    cursor: pointer;
+    transition: var(--transition);
+    min-height: 64px;
+}
+
+.mcq-bank__day-btn:hover:not(.mcq-bank__day-btn--locked) {
+    border-color: var(--brand-primary);
+    background-color: var(--brand-primary-subtle);
+}
+
+.mcq-bank__day-btn--selected {
+    border-color: var(--brand-primary);
+    background-color: var(--brand-primary);
+    color: #FFFFFF;
+    box-shadow: 0 2px 8px rgba(122, 160, 49, 0.35);
+}
+
+.mcq-bank__day-btn--completed {
+    border-color: var(--brand-primary);
+    background-color: #F4F8EC;
+    color: var(--brand-primary-text);
+    cursor: default;
+}
+
+.mcq-bank__day-btn--completed .mcq-bank__day-check {
+    color: #047857;
+    font-weight: 800;
+}
+
+.mcq-bank__day-btn--locked {
+    opacity: 0.5;
+    cursor: not-allowed;
+    background-color: var(--bg-muted);
+}
+
+.mcq-bank__day-btn--next {
+    border-color: var(--brand-primary);
+    border-style: dashed;
+}
+
+.mcq-bank__day-number {
+    font-size: inherit;
+}
+
+.mcq-bank__day-check,
+.mcq-bank__day-next,
+.mcq-bank__day-lock {
+    font-size: 0.7rem;
+}
+
+/* Questions */
+.mcq-bank__questions {
+    margin-bottom: 28px;
+}
+
+.mcq-bank__question-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.mcq-bank__question-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px 16px;
+    background: #FFFFFF;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+}
+
+.mcq-bank__q-number {
+    background-color: var(--brand-primary);
+    color: #FFFFFF;
+    font-size: 0.75rem;
+    font-weight: 800;
+    padding: 2px 8px;
+    border-radius: var(--radius-sm);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.mcq-bank__q-text {
+    font-size: 0.9rem;
+    color: var(--text-body);
+    line-height: 1.5;
+    flex: 1;
+}
+
+.mcq-bank__options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 6px;
+}
+
+.mcq-bank__option {
+    background-color: var(--bg-muted);
+    border: 1px solid var(--border-main);
+    padding: 4px 10px;
+    border-radius: var(--radius-sm);
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+/* Actions */
+.mcq-bank__actions {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    margin-bottom: 28px;
+}
+
+.mcq-bank__upload {
+    padding: 20px;
+    background: #FFFFFF;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-card);
+}
+
+.mcq-bank__files {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 12px;
+}
+
+.mcq-bank__file-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    background-color: var(--bg-muted);
+    border-radius: var(--radius-sm);
+    font-size: 0.85rem;
+}
+
+.mcq-bank__error {
+    padding: 12px 16px;
+    background-color: #FEF2F2;
+    border: 1px solid #FECACA;
+    color: #991B1B;
+    border-radius: var(--radius-md);
+    margin-bottom: 16px;
+    font-size: 0.88rem;
+}
+
+/* Results */
+.mcq-bank__results {
+    margin-bottom: 28px;
+}
+
+.mcq-bank__results-table {
+    background: #FFFFFF;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    box-shadow: var(--shadow-card);
+}
+
+.mcq-bank__results-header {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr 1fr;
+    gap: 12px;
+    padding: 14px 20px;
+    background-color: var(--brand-primary);
+    color: #FFFFFF;
+    font-weight: 700;
+    font-size: 0.85rem;
+}
+
+.mcq-bank__results-row {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr 1fr;
+    gap: 12px;
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--border-subtle);
+    font-size: 0.9rem;
+    align-items: center;
+}
+
+.mcq-bank__results-row:last-child {
+    border-bottom: none;
+}
+
+.mcq-bank__candidate-name {
+    font-weight: 600;
+    color: var(--text-heading);
+}
+
+.mcq-bank__score {
+    font-weight: 700;
+    color: var(--brand-primary-text);
+}
+
+.mcq-bank__max {
+    color: var(--text-muted);
+}
+
+.mcq-bank__percentage--pass {
+    color: #047857;
+    font-weight: 700;
+}
+
+.mcq-bank__percentage--fail {
+    color: #DC2626;
+    font-weight: 700;
+}
+
+.mcq-bank__answer-key {
+    margin-top: 20px;
+    padding: 20px;
+    background: #FFFFFF;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-card);
+}
+
+.mcq-bank__answer-key h4 {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text-heading);
+    margin-bottom: 12px;
+}
+
+.mcq-bank__key-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
+    gap: 8px;
+}
+
+.mcq-bank__key-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    background-color: var(--bg-muted);
+    border-radius: var(--radius-sm);
+    font-size: 0.85rem;
+}
+
+.mcq-bank__key-q {
+    font-weight: 700;
+    color: var(--brand-primary-text);
+}
+
+.mcq-bank__key-ans {
+    font-weight: 600;
+    color: var(--text-heading);
+}
+
+.mcq-bank__nav {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 20px;
+}
+
+.mcq-bank__complete {
+    text-align: center;
+    padding: 20px;
+    background-color: #F4F8EC;
+    border: 1px solid var(--brand-primary-border);
+    border-radius: var(--radius-lg);
+}
+
+.mcq-bank__complete h3 {
+    color: #047857;
+    font-weight: 700;
+}
+
+/* Upload dropzone compact */
+.upload-dropzone--compact {
+    border: 2px dashed var(--brand-primary-border);
+    background-color: #FAFBF8;
+    border-radius: var(--radius-md);
+    padding: 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: var(--transition);
+    margin-bottom: 12px;
+}
+
+.upload-dropzone--compact:hover {
+    border-color: var(--brand-primary);
+    background-color: var(--brand-primary-subtle);
+}
+
+.upload-dropzone__selected {
+    font-weight: 600;
+    color: var(--brand-primary-text);
+}
+
+.upload-dropzone__hint {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+
+.upload-error--inline {
+    margin-bottom: 12px;
+    font-size: 0.85rem;
+}
+
+.btn-xs {
+    padding: 4px 8px;
+    font-size: 0.75rem;
+    min-height: 28px;
+}
+
+/* MCQ home button */
+.mcq-bank__home-btn .btn-mcq {
+    width: 100%;
+    justify-content: center;
 }
