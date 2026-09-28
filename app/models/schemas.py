@@ -220,3 +220,53 @@ class MCQDownloadResponse(BaseModel):
     success: bool
     day: int
     filepath: str
+
+
+class MCQResultRow(BaseModel):
+    """One scored row from daily_mcq_results (Part D/E)."""
+
+    id: int
+    candidate_id: str
+    answer_sequence: str
+    score: int | None = None
+    max_score: int
+    percentage: float | None = None
+    row_status: str = "OK"
+    raw_ocr_text: str | None = None
+    answer_detail: list[dict] | None = None
+    created_at: str | None = None
+
+
+class MCQResultsResponse(BaseModel):
+    day: int
+    questions: list[str]
+    correct_answers: list[str]
+    total_questions: int
+    results: list[MCQResultRow]
+
+
+class MCQResultUpdateRequest(BaseModel):
+    """Manual correction of a result row (candidate ID and/or sequence)."""
+
+    candidate_id: str | None = None
+    answer_sequence: str | None = None
+
+
+class MCQUploadRow(BaseModel):
+    result_id: int
+    slot_index: int
+    candidate_id: str
+    answer_sequence: str
+    score: int | None = None
+    max_score: int
+    percentage: float | None = None
+    row_status: str
+
+
+class MCQSheetUploadResponse(BaseModel):
+    success: bool
+    day: int
+    answer_key_sequence: str
+    max_score: int
+    rows: list[MCQUploadRow]
+    message: str

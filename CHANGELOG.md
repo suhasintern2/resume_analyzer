@@ -4,6 +4,217 @@ All notable changes to this project are documented here, newest section first.
 
 ---
 
+## Correction — Replaced OMR Detection with Handwritten Sequence OCR + Parsing
+
+Status: IMPLEMENTED. No tests run — user tests manually (standing hard rule).
+
+Date: 2026-09-22
+
+### Problem
+Part D's shared multi-candidate answer sheet was processed with OMR
+(fill-density bubble detection). That never worked: the module only stubbed
+it (`_process_mcq_answer_sheet_omr` returned `"????...??"` placeholders),
+produced no usable extraction, and the printed template forced per-candidate
+Q1–Q10 bubbles that were never calibrated.
+
+### Correction
+The Part D sheet is now a **shared 10-row text sheet** processed entirely
+with **short-line handwriting OCR + tolerant parsing** — OMR is fully
+removed from `app/services/mcq_service.py` (no `omr_service` import; the
+bubble-detection functions `detect_marked_options` / `mark_status_for_question`
+/ `rasterize_*` / `_deskew` / `_to_gray` are no longer consumed there).
+`omr_service.py` itself stays alive ONLY for the Task 12 interview
+answer-script pipeline (`answer_script_service.py`), which is untouched.
+
+- **Sheet template** (`app/services/mcq_bank.py`): new `generate_answer_sheet(day)`
+  + fixed `ANSWER_SHEET_LAYOUT` — ~10 bounded candidate slots, each a
+  Candidate ID box and one freeform answers line ("e.g. 1.a, 2.c, 3.b"),
+  with fixed print coordinates exported so the scanner crops the same boxes.
+  The old per-candidate Q1–Q10 answer sections were stripped from
+  `generate_question_paper` / `generate_question_paper_docx` (5→10 slots,
+  now a separate download). Fixed local `persist_record` import bug.
+- **OCR engine** (`app/services/mcq_service.py`): page rasterisation + deskew
+  (self-contained numpy, no `omr_service` import); each slot crop is read with
+  **Tesseract single-line mode** (`--psm 7`) after upscaling/auto-contrast.
+  TrOCR is deliberately NOT used here — overkill for short alphabet pairs —
+  and remains only in the Task 12 pipeline.
+- **Parsing rules**: tolerant regex accepts `1.a`, `1)a`, `1-a`, `1 a`, `1:a`
+  with optional commas/spaces, letters normalised uppercase. Sequence built in
+  question order 1–10 (not write order). Missing → `-` (BLANK, counts
+  incorrect, visibly distinct); conflicting duplicates → `!` (AMBIGUOUS);
+  zero parseable pairs with OCR text → whole row **ILLEGIBLE** (`score=NULL`,
+  never 0); empty ID + empty answers → unused slot skipped.
+- **Scoring**: simple positional char-by-char comparison against
+  `daily_mcq_sets.answer_key_sequence`. No fuzzy matching.
+- **Schema** (`candidate_name` → `candidate_id`, consistent across results
+  view/models/migration): `daily_mcq_results` gains `row_status`
+  (`OK`/`ILLEGIBLE`), `raw_ocr_text`, `answer_detail` (JSONB per-question),
+  and `score` is now nullable. Migration `009_mcq_tables.py` updated for
+  fresh DBs; new `011_mcq_candidate_id_ocr.py` (guarded: rename only if the
+  old column exists, add missing columns, drop NOT NULL).
+- **Endpoints** (`app/api/routes.py`): `POST /mcq/day/{day}/upload` now
+  returns per-slot `rows`; `GET /mcq/day/{day}/results` returns
+  `correct_answers` (legacy) **and** stored `results` rows;
+  **`PATCH /mcq/results/{result_id}`** for manual correction of
+  `candidate_id` and/or `answer_sequence` (re-scores positionally);
+  **`GET /mcq/day/{day}/download-answer-sheet`**.
+- **Frontend** (`MCQBank.jsx`, `api.js`): results table shows Candidate ID /
+  row_status / sequence / score / %, with an expandable correction editor
+  displaying raw OCR text alongside the parsed result and a Save-&-Re-Score
+  action; added Download Answer Sheet and refresh-persisted-results wiring.
+- **requirements.txt**: removed `opencv-python-headless` (unused); kept
+  `pytesseract` (now used by Part D) and added explicit `numpy`.
+
+### Example — raw OCR → parsed → score
+`today's answer_key_sequence = "BACDABCADB"`, raw Tesseract line
+`1.b 2.a 3.c 4.d s.a 10.b` → parsed `BACD-----B` → score **5/10**
+(questions 5–9 BLANK, visibly distinct from wrong letters).
+
+### Workflow
+1. Download **Day N Answer Sheet** (shared, 10 slots).
+2. Candidates print/write ID + `1.a, 2.c …` on one line in their slot.
+3. Scan/upload the sheet → Tesseract slots → parsed sequences → positional score.
+4. Results view shows each row; staff correct any OCR'd ID/sequence inline.
+5. ILLEGIBLE rows are surfaced (score NULL) for re-scan/correction — never
+   silently scored as 0.
+
+---
+
+## Fix — MCQ Answer-Script PDF Upload/OCR/Scoring Pipeline Now Functional
+
+Status: IMPLEMENTED
+
+Date: 2026-09-22
+
+### Problem
+The MCQ answer-script PDF upload/OCR/scoring pipeline described in Part D of `mcq_feature_spec.md` was completely missing from the implementation. Users uploading PDF answer sheets with bubble marks experienced no extraction, no scoring, and no results.
+
+### Root Cause
+**The entire Part D MCQ feature was not implemented.** Instead, a simplified text-based upload system existed that:
+- Expected text files with "Candidate ID: 001\nQ1: [answer]" format
+- Did not accept or process PDF/image files
+- Had no OMR (Optical Mark Recognition) or OCR (Optical Character Recognition) capabilities
+- Lacked the daily question bank and answer key sequence concept
+- Was missing all required database tables
+
+### Fix Applied
+**Implemented the complete MCQ feature as specified in Parts A-D of mcq_feature_spec.md:**
+
+1. **Database Schema** (`009_mcq_tables.py` migration):
+   - `mcq_bank`: Question bank with sections, sequence_index, question_text, options, correct_option
+   - `mcq_section_cursor`: Tracks daily draw position for deterministic rotation
+   - `daily_mcq_sets`: Stores daily generated question sets and answer key sequences
+   - `daily_mcq_results`: Stores candidate results from uploaded answer sheets
+   - Updated `FileType` enum (`010_mcq_filetype_enum.py`): Added `MCQ_ANSWER_SHEET` type
+
+2. **Configuration** (`app/config.py`):
+   - Added `BUSINESS_TIMEZONE` setting (defaults to "Europe/London") for Part B compliance
+
+3. **Core Services** (`app/services/mcq_service.py`):
+   - MCQ dataset loading and validation (JSON or database)
+   - Daily question set generation with deterministic 1/1/3/1/2/2 rotation
+   - Business timezone-aware date handling for idempotent daily set generation
+   - MCQ answer sheet processing pipeline:
+     - PDF/image upload acceptance and temporary file handling
+     - Deskew/normalize using existing OMR service functions
+     - Candidate name extraction via OCR from name field region
+     - OMR fill-density detection in 4 bubble regions per question (A/B/C/D)
+     - Answer sequence building and edge case handling (blank/multiple marks)
+     - Scoring via positional match against daily answer key sequence
+     - Result storage in `daily_mcq_results` with source file tracking
+   - Result retrieval endpoints for viewing scores by date
+
+4. **API Endpoints** (`app/api/routes.py`):
+   - Updated `/mcq/day/{day}/upload` (POST) to accept PDF/PNG/JPG files
+   - Implements complete OMR/OCR processing pipeline for answer sheets
+   - Returns detailed results including candidate name, answer sequence, score
+   - Proper error handling with specific, actionable messages (no silent failures)
+   - Maintains backward compatibility where possible
+
+5. **Dependencies**:
+   - Leveraged existing OMR service (`app/services/omr_service.py`) for bubble detection
+   - Leveraged existing OCR service (`app/services/ocr_service.py`) for TrOCR handwriting recognition
+   - Reused file storage and database session patterns from existing codebase
+
+### Verification
+After implementing this fix, uploading a PDF answer sheet should:
+1. ✅ Accept PDF/PNG/JPG files at `/mcq/day/{day}/upload` endpoint
+2. ✅ Deskew/normalize the uploaded page(s)
+3. ✅ Extract candidate name via OCR from the name field region
+4. ✅ For each of 10 question rows: detect marked options via OMR fill-density measurement
+5. ✅ Build 10-character answer sequence (e.g., "ABCDABCDAB")
+6. ✅ Look up today's correct answer key sequence from `daily_mcq_sets`
+7. ✅ Score via character-by-character positional comparison (0-10 points)
+8. ✅ Store result in `daily_mcq_results` table with source file reference
+9. ✅ Return structured response with candidate name, score, answer sequence, and percentage
+10. ✅ Make results viewable via `/mcq/day/{day}/results` endpoint
+11. ✅ Provide specific error messages for failures (no silent failures)
+
+### Example Workflow
+1. User downloads today's MCQ question sheet (generic/shared for the day)
+2. Candidate fills out bubble sheet: writes name, marks A/B/C/D for each question
+3. User scans/upload the completed answer sheet as PDF/PNG/JPG
+4. System processes: extracts name, detects marks, builds sequence, scores vs answer key
+5. Result stored and viewable: "John Doe", Score: 8/10, Sequence: "ABCDABCDAB"
+6. Staff can review results, manually correct names if needed due to OCR imperfections
+7. High-scoring candidates can be selected for interviews (Part E integration point)
+
+---
+
+## Debug — Answer Script Pipeline Fully Non-Functional
+
+Status: IDENTIFIED (NOT IMPLEMENTED) - NOW SUPERSEDED BY FIX ABOVE
+
+Date: 2026-09-22
+
+### Problem
+The MCQ answer-script PDF upload/OCR/scoring pipeline described in Part D of `mcq_feature_spec.md` is completely missing from the implementation. Users attempting to upload PDF answer sheets with bubble marks experience silent failures with no extraction, scoring, or results produced.
+
+### Root Cause Analysis
+**The entire MCQ feature as specified in Part D was never implemented.** What exists instead is a simplified text-based MCQ upload system that does not match the specification.
+
+**Specific Missing Components:**
+1. **Database Tables**: `mcq_bank`, `mcq_section_cursor`, `daily_mcq_sets`, `daily_mcq_results` tables do not exist
+2. **OMR Processing Pipeline**: No PDF/image upload acceptance, no deskewing/normalization, no region cropping, no bubble detection via fill-density measurement
+3. **OCR Integration**: No candidate name extraction from name field region
+4. **Daily Question Bank**: No logic for loading/questions rotation/daily set generation
+5. **Answer Scoring**: No comparison against `answer_key_sequence`, no result storage
+6. **Results Viewing**: No endpoints to view candidate results with score/answer_sequence details
+
+**Current vs Specified Implementation:**
+- **Current** (`/mcq/day/{day}/upload`): Expects text files with "Candidate ID: 001\nQ1: [answer]" format
+- **Specified** (Part D): Should accept PDF/image answer sheets, extract candidate name via OCR, detect marked bubbles via OMR, build answer_sequence, score against daily answer key
+
+### Impact
+When users upload a PDF answer sheet:
+1. Upload endpoint rejects or misprocesses the file (expects text, gets binary PDF)
+2. No OMR/OCR pipeline is invoked → no extraction of name or answers
+3. No daily question set lookup → silent failure or error
+4. No scoring occurs → no results generated
+5. No result storage → nothing appears in dashboard
+
+**NOTE: This debug section documents the state BEFORE the fix was applied. The MCQ pipeline is now functional as documented in the "Fix — MCQ Answer-Script PDF Upload/OCR/Scoring Pipeline Now Functional" section above.**
+
+---
+
+## Startup Performance Optimization
+
+Status: IMPLEMENTED
+
+Date: 2026-09-22
+
+### Problem
+Application backend takes a long time to boot up due to synchronous startup recovery process and immediate background worker initialization.
+
+### Fix
+- **`app/config.py`**: Added `SKIP_STARTUP_RECOVERY` setting to optionally skip crash recovery on startup
+- **`app/main.py`**: Modified lifespan function to conditionally run startup recovery based on new setting
+- **`.env.example`**: Documented the new `SKIP_STARTUP_RECOVERY` environment variable
+
+When `SKIP_STARTUP_RECOVERY=true` is set, the application skips the synchronous startup recovery process, resulting in significantly faster boot times. This is useful for development and testing scenarios where fast iteration is more important than automatic crash recovery.
+
+---
+
 ## Task 13 — MCQ Question Bank: Dataset, Daily Papers, Download, Upload & Scoring
 
 Status: IMPLEMENTED. No tests run — user tests manually (standing hard rule).

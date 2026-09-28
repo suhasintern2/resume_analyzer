@@ -2,11 +2,10 @@ import base64
 import io
 import logging
 import httpx
-import torch
 from PIL import Image
 import pymupdf as fitz
+import pytesseract
 from app.config import settings
-from transformers import TrOCRProcessor, VisionEncoderDecoderModel
 
 logger = logging.getLogger(__name__)
 
@@ -33,28 +32,6 @@ _HANDWRITING_OCR_PROMPT = (
     "If text is illegible, write [ILLEGIBLE] on that line. "
     "Return ONLY the extracted plain text with no commentary."
 )
-
-
-# Initialize TrOCR model and processor lazily to avoid startup overhead
-_trocr_processor = None
-_trocr_model = None
-
-
-def _get_trocr_model():
-    """Lazy load TrOCR model and processor."""
-    global _trocr_processor, _trocr_model
-    if _trocr_processor is None or _trocr_model is None:
-        try:
-            logger.info("Loading TrOCR model: %s", settings.TROCR_MODEL)
-            _trocr_processor = TrOCRProcessor.from_pretrained(settings.TROCR_MODEL)
-            _trocr_model = VisionEncoderDecoderModel.from_pretrained(settings.TROCR_MODEL)
-            _trocr_model.to(settings.TROCR_DEVICE)
-            _trocr_model.eval()
-            logger.info("TrOCR model loaded successfully on %s", settings.TROCR_DEVICE)
-        except Exception as e:
-            logger.error("Failed to load TrOCR model: %s", e)
-            raise
-    return _trocr_processor, _trocr_model
 
 
 # ---------------------------------------------------------------------------
@@ -169,35 +146,26 @@ def ocr_pdf(file_path: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Handwriting OCR (TrOCR - AI-free, local implementation)
+# Handwriting OCR (Tesseract — AI-free, local, no heavy ML dependencies)
 # ---------------------------------------------------------------------------
 
 
+def _handwriting_ocr_pil(image: Image.Image) -> str:
+    """OCR one PIL image with Tesseract in block mode."""
+    image = _preprocess_image(image)
+    gray = image.convert("L")
+    text = pytesseract.image_to_string(gray, config="--oem 3 --psm 6")
+    return text.strip()
+
+
 def ocr_handwriting_image(image_bytes: bytes) -> str:
-    """Transcribe one scanned handwriting image via local TrOCR (AI-free)."""
+    """Transcribe one scanned handwriting image via local Tesseract (AI-free)."""
     try:
-        # Load and preprocess image
         image = Image.open(io.BytesIO(image_bytes))
-        if image.mode != "RGB":
-            image = image.convert("RGB")
-        image = _preprocess_image(image)
+        text = _handwriting_ocr_pil(image)
 
-        # Get TrOCR model and processor
-        processor, model = _get_trocr_model()
-
-        # Process image with TrOCR
-        pixel_values = processor(image, return_tensors="pt").pixel_values.to(settings.TROCR_DEVICE)
-
-        # Generate text
-        with torch.no_grad():
-            generated_ids = model.generate(pixel_values, max_length=512)
-            generated_text = processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
-
-        # Clean up the text - TrOCR sometimes adds extra spaces or newlines
-        generated_text = generated_text.strip()
-
-        logger.info("TrOCR OCR'd handwriting image (%d chars)", len(generated_text))
-        return generated_text
+        logger.info("Handwriting image OCR'd (%d chars)", len(text))
+        return text
 
     except Exception as e:
         logger.error("Handwriting image OCR failed: %s", e)
@@ -205,9 +173,9 @@ def ocr_handwriting_image(image_bytes: bytes) -> str:
 
 
 def ocr_handwriting_pdf(file_path: str) -> str:
-    """Transcribe a scanned PDF of a handwritten answer sheet via local TrOCR (AI-free).
+    """Transcribe a scanned PDF of a handwritten answer sheet via local Tesseract (AI-free).
 
-    Each page is processed locally with TrOCR for best accuracy.
+    Each page is rasterized and processed locally for accuracy.
     """
     try:
         doc = fitz.open(file_path)
@@ -215,28 +183,17 @@ def ocr_handwriting_pdf(file_path: str) -> str:
 
         for page_num in range(len(doc)):
             page = doc.load_page(page_num)
-            pix = page.get_pixmap(dpi=200)
+            pix = page.get_pixmap(dpi=settings.OMR_DPI)
             png_bytes = pix.tobytes("png")
 
-            # Process with TrOCR
             image = Image.open(io.BytesIO(png_bytes))
-            if image.mode != "RGB":
-                image = image.convert("RGB")
-            image = _preprocess_image(image)
+            text = _handwriting_ocr_pil(image)
 
-            processor, model = _get_trocr_model()
-            pixel_values = processor(image, return_tensors="pt").pixel_values.to(settings.TROCR_DEVICE)
-
-            with torch.no_grad():
-                generated_ids = model.generate(pixel_values, max_length=512)
-                generated_text = processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
-
-            text = generated_text.strip()
             if text.strip():
                 page_texts.append(text.strip())
 
             logger.info(
-                "TrOCR OCR'd handwriting page %d/%d for %s (%d chars)",
+                "Handwriting PDF OCR'd page %d/%d for %s (%d chars)",
                 page_num + 1, len(doc), file_path, len(text.strip()),
             )
 

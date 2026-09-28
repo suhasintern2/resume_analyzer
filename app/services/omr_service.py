@@ -5,7 +5,7 @@ calls.  MCQ answers are read with a pure image-processing OMR pass
 (Pillow + numpy): each printed checkbox from the question sheet's
 ``layout_metadata`` is measured for interior ink density, and exactly one
 marked option maps to that question's chosen letter.  Open-ended answers are
-OCR'd locally with TrOCR (see ``ocr_service``).
+OCR'd locally with Tesseract (see ``ocr_service``).
 
 No cv2 / OpenCV dependency — all image processing uses numpy and Pillow.
 
