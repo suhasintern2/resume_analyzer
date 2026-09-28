@@ -6,6 +6,8 @@ import {
   uploadMCQAnswers,
   getMCQResults,
   downloadMCQAnswerKey,
+  downloadMCQAnswerSheet,
+  patchMCQResult,
 } from '../services/api';
 
 const DAYS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
@@ -23,6 +25,11 @@ export default function MCQBank({ onToast, onBack }) {
   const [uploadError, setUploadError] = useState('');
   const [scores, setScores] = useState(null);
   const [completedDays, setCompletedDays] = useState(new Set());
+  const [downloadingAnswerSheet, setDownloadingAnswerSheet] = useState(false);
+  const [editId, setEditId] = useState(null);
+  const [editCandidate, setEditCandidate] = useState('');
+  const [editSequence, setEditSequence] = useState('');
+  const [saving, setSaving] = useState(false);
 
   const fileInputRef = useRef(null);
   const toastTimerRef = useRef(null);
@@ -131,20 +138,82 @@ export default function MCQBank({ onToast, onBack }) {
     setUploadError('');
     try {
       const result = await uploadMCQAnswers(selectedDay, selectedFiles);
-      const candidateScores = result.scores || {};
-      setScores(candidateScores);
+      // result.rows[] is the scored shared-sheet rows (Part D).
+      // Keep the answer key for display regardless of stored rows.
+      const rows = result.rows || [];
+      setScores(rows);
       setCompletedDays((prev) => new Set([...prev, selectedDay]));
       try {
         const results = await getMCQResults(selectedDay);
         setCorrectAnswers(results.correct_answers || []);
       } catch { /* ignore */ }
       setPhase('results');
-      showToast(`Day ${selectedDay} scored! Check results below.`);
+      showToast(`Day ${selectedDay} scored! Review results below.`);
     } catch (err) {
       setUploadError(err.message || 'Upload failed.');
     } finally {
       setUploading(false);
     }
+  }
+
+  async function handleDownloadAnswerSheet() {
+    if (!selectedDay) return;
+    setDownloadingAnswerSheet(true);
+    try {
+      const blob = await downloadMCQAnswerSheet(selectedDay);
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `VlookUp_MCQ_Answer_Sheet_Day_${selectedDay}.docx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+      showToast(`Day ${selectedDay} shared answer sheet downloaded!`);
+    } catch (err) {
+      showToast('Failed to download answer sheet.');
+    } finally {
+      setDownloadingAnswerSheet(false);
+    }
+  }
+
+  function startEdit(row) {
+    setEditId(row.result_id ?? row.id);
+    setEditCandidate(row.candidate_id || '');
+    setEditSequence(row.answer_sequence || '');
+  }
+
+  async function saveEdit(row) {
+    setSaving(true);
+    try {
+      const res = await patchMCQResult(row.result_id ?? row.id, {
+        candidateId: editCandidate,
+        answerSequence: editSequence,
+      });
+      const updated = res.result;
+      setScores((prev) => (prev || []).map((r) => (
+        r.result_id === updated.id
+          ? {
+              ...r,
+              candidate_id: updated.candidate_id,
+              answer_sequence: updated.answer_sequence,
+              score: updated.score,
+              percentage: updated.percentage,
+              row_status: updated.row_status,
+            }
+          : r
+      )));
+      setEditId(null);
+      showToast('Result updated and re-scored.');
+    } catch (err) {
+      showToast(err.message || 'Failed to update result.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function cancelEdit() {
+    setEditId(null);
   }
 
   function handleFilePick(e) {
@@ -163,6 +232,23 @@ export default function MCQBank({ onToast, onBack }) {
   function removeFile(index) {
     setSelectedFiles((prev) => prev.filter((_, i) => i !== index));
   }
+
+  // Refresh persisted result rows when returning to the results phase
+  // (e.g. after a page reload) — GET rows use `id`, upload rows use `result_id`.
+  useEffect(() => {
+    if (phase !== 'results' || !selectedDay) return;
+    async function refresh() {
+      try {
+        const data = await getMCQResults(selectedDay);
+        setCorrectAnswers(data.correct_answers || []);
+        if (data.results && data.results.length > 0) {
+          setScores(data.results.map((r) => ({ ...r, result_id: r.id })));
+        }
+      } catch { /* keep whatever we already have */ }
+    }
+    refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, selectedDay]);
 
   const canProceedToNextDay = completedDays.has(selectedDay);
   const nextDay = selectedDay ? selectedDay + 1 : 1;
@@ -281,6 +367,13 @@ export default function MCQBank({ onToast, onBack }) {
           >
             {downloadingAnswerKey ? 'Downloading…' : `Download Day ${selectedDay} Answer Key`}
           </button>
+          <button
+            className="btn btn-outline-secondary"
+            onClick={handleDownloadAnswerSheet}
+            disabled={downloadingAnswerSheet}
+          >
+            {downloadingAnswerSheet ? 'Downloading…' : `Download Day ${selectedDay} Answer Sheet`}
+          </button>
 
           <div className="mcq-bank__upload">
             <h3 className="mcq-bank__section-title">Upload Completed Answer Sheets</h3>
@@ -293,7 +386,7 @@ export default function MCQBank({ onToast, onBack }) {
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".txt,.csv,.pdf,.jpg,.jpeg,.png"
+                accept=".pdf,.jpg,.jpeg,.png"
                 multiple
                 style={{ display: 'none' }}
                 onChange={handleFilePick}
@@ -304,7 +397,7 @@ export default function MCQBank({ onToast, onBack }) {
                 </span>
               ) : (
                 <span className="upload-dropzone__hint">
-                  Drag &amp; drop or click — answer sheets (5 candidates)
+                  Drag &amp; drop or click — scanned shared answer sheet (10 candidate rows)
                 </span>
               )}
             </div>
@@ -338,21 +431,70 @@ export default function MCQBank({ onToast, onBack }) {
           <h3 className="mcq-bank__section-title">Day {selectedDay} — Results</h3>
           <div className="mcq-bank__results-table">
             <div className="mcq-bank__results-header">
-              <span>Candidate</span>
+              <span>Candidate ID</span>
+              <span>Status</span>
+              <span>Sequence</span>
               <span>Score</span>
               <span>Max</span>
               <span>%</span>
+              <span />
             </div>
-            {Object.entries(scores).map(([name, data]) => (
-              <div key={name} className="mcq-bank__results-row">
-                <span className="mcq-bank__candidate-name">{name}</span>
-                <span className="mcq-bank__score">{data.score}</span>
-                <span className="mcq-bank__max">{data.max_score}</span>
-                <span className={`mcq-bank__percentage ${data.percentage >= 70 ? 'mcq-bank__percentage--pass' : 'mcq-bank__percentage--fail'}`}>
-                  {data.percentage}%
-                </span>
+            {scores.length === 0 && (
+              <div className="mcq-bank__no-questions">
+                <p>No candidate rows were parsed from the uploaded sheet.</p>
               </div>
-            ))}
+            )}
+            {scores.map((row, rowIndex) => {
+              const rowKey = row.result_id ?? row.id;
+              const isEditing = editId === rowKey;
+              return (
+                <div key={rowKey ?? rowIndex} className="mcq-bank__results-row">
+                  <span className="mcq-bank__candidate-name">{row.candidate_id || '(no ID OCR)'}</span>
+                  <span className={`mcq-bank__status mcq-bank__status--${(row.row_status || 'OK').toLowerCase()}`}>
+                    {row.row_status || 'OK'}
+                  </span>
+                  <span className="mcq-bank__seq">{row.answer_sequence}</span>
+                  <span className="mcq-bank__score">{row.score ?? '—'}</span>
+                  <span className="mcq-bank__max">{row.max_score}</span>
+                  <span className={`mcq-bank__percentage ${row.score !== null && row.score !== undefined && row.score / row.max_score >= 0.7 ? 'mcq-bank__percentage--pass' : 'mcq-bank__percentage--fail'}`}>
+                    {row.percentage != null ? `${row.percentage}%` : 'N/A'}
+                  </span>
+                  <button className="btn btn-ghost btn-xs" onClick={() => (isEditing ? cancelEdit() : startEdit(row))}>
+                    {isEditing ? 'Cancel' : 'Correct'}
+                  </button>
+
+                  {isEditing && (
+                    <div className="mcq-bank__edit">
+                      <div className="mcq-bank__edit-raw">
+                        <strong>Raw OCR:</strong>
+                        <pre>{row.raw_ocr_text}</pre>
+                      </div>
+                      <label>
+                        Candidate ID:{' '}
+                        <input
+                          value={editCandidate}
+                          onChange={(e) => setEditCandidate(e.target.value)}
+                          placeholder="e.g. 001"
+                          className="mcq-bank__edit-input"
+                        />
+                      </label>
+                      <label>
+                        Answer sequence (A-D, or '-' blank / '!' ambiguous):{' '}
+                        <input
+                          value={editSequence}
+                          onChange={(e) => setEditSequence(e.target.value)}
+                          placeholder="e.g. ABCD---DAB"
+                          className="mcq-bank__edit-input"
+                        />
+                      </label>
+                      <button className="btn btn-primary btn-sm" disabled={saving} onClick={() => saveEdit(row)}>
+                        {saving ? 'Saving…' : 'Save & Re-score'}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
 
           {correctAnswers.length > 0 && (

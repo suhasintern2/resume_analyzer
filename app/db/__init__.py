@@ -17,6 +17,10 @@ from app.db.models import (
     EvaluationStatusType,
     QuestionEvalStatusType,
     FileTypeType,
+    McqBank,
+    McqSectionCursor,
+    DailyMcqSets,
+    DailyMcqResults,
 )
 
 __all__ = [
@@ -36,4 +40,8 @@ __all__ = [
     "EvaluationStatusType",
     "QuestionEvalStatusType",
     "FileTypeType",
+    "McqBank",
+    "McqSectionCursor",
+    "DailyMcqSets",
+    "DailyMcqResults",
 ]

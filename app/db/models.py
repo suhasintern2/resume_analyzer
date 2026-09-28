@@ -46,7 +46,7 @@ _question_eval_status = (
     "SEGMENTATION_UNCERTAIN",
 )
 
-_file_type = ("RESUME", "QUESTION_SHEET", "ANSWER_KEY", "ANSWER_SCRIPT", "MCQ_SHEET")
+_file_type = ("RESUME", "QUESTION_SHEET", "ANSWER_KEY", "ANSWER_SCRIPT", "MCQ_SHEET", "MCQ_ANSWER_SHEET")
 
 
 InterviewStatusType = sa.Enum(
@@ -232,6 +232,88 @@ class QuestionConceptKey(Base):
     )
     name = sa.Column(sa.Text, nullable=False)
     weight = sa.Column(sa.Numeric, nullable=False)
+    created_at = sa.Column(
+        sa.TIMESTAMP(timezone=True),
+        server_default=sa.func.now(),
+        nullable=False,
+    )
+
+
+class McqBank(Base):
+    """Task 13 Part A — static MCQ question bank (100 questions, 6 sections)."""
+
+    __tablename__ = "mcq_bank"
+
+    id = sa.Column(sa.Integer, primary_key=True, autoincrement=True)
+    section = sa.Column(sa.Text, nullable=False, index=True)
+    sequence_index = sa.Column(sa.Integer, nullable=False)
+    question_text = sa.Column(sa.Text, nullable=False)
+    options = sa.Column(postgresql.ARRAY(sa.Text), nullable=False)
+    correct_option = sa.Column(sa.Text, nullable=False)
+
+    __table_args__ = (
+        sa.UniqueConstraint("section", "sequence_index"),
+    )
+
+
+class McqSectionCursor(Base):
+    """Task 13 Part B — per-section rotation cursor (deterministic daily draw)."""
+
+    __tablename__ = "mcq_section_cursor"
+
+    section = sa.Column(sa.Text, primary_key=True)
+    next_index = sa.Column(sa.Integer, nullable=False, server_default="0")
+
+
+class DailyMcqSets(Base):
+    """Task 13 Part B — one generated question set per business date."""
+
+    __tablename__ = "daily_mcq_sets"
+
+    id = sa.Column(sa.Integer, primary_key=True, autoincrement=True)
+    set_date = sa.Column(sa.Date, nullable=False, unique=True, index=True)
+    question_ids = sa.Column(postgresql.ARRAY(sa.Integer), nullable=False)
+    answer_key_sequence = sa.Column(sa.Text, nullable=False)
+    created_at = sa.Column(
+        sa.TIMESTAMP(timezone=True),
+        server_default=sa.func.now(),
+        nullable=False,
+    )
+
+
+class DailyMcqResults(Base):
+    """Task 13 Part D — one scored row per candidate on a shared answer sheet.
+
+    ``row_status``: "OK" | "ILLEGIBLE".
+    ``answer_sequence``: 10 chars in question order — A/B/C/D, ``-`` = blank
+    (no answer written), ``!`` = ambiguous (conflicting letters OCR'd).
+    ``score``: NULL when row_status is ILLEGIBLE (never silently 0).
+    ``answer_detail``: JSONB per-question breakdown for staff review.
+    ``candidate_id``: OCR'd Candidate ID (manually correctable) — replaced the
+    earlier misleading ``candidate_name`` column.
+    """
+
+    __tablename__ = "daily_mcq_results"
+
+    id = sa.Column(sa.Integer, primary_key=True, autoincrement=True)
+    daily_mcq_set_id = sa.Column(
+        sa.Integer,
+        sa.ForeignKey("daily_mcq_sets.id"),
+        nullable=False,
+        index=True,
+    )
+    candidate_id = sa.Column(sa.Text, nullable=False, server_default="")
+    answer_sequence = sa.Column(sa.Text, nullable=False, server_default="")
+    score = sa.Column(sa.Integer, nullable=True)
+    row_status = sa.Column(sa.Text, nullable=False, server_default="OK")
+    raw_ocr_text = sa.Column(sa.Text)
+    answer_detail = sa.Column(postgresql.JSONB)
+    source_sheet_file_id = sa.Column(
+        sa.Integer,
+        sa.ForeignKey("files.id"),
+        nullable=True,
+        index=True,
+    )
     created_at = sa.Column(
         sa.TIMESTAMP(timezone=True),
         server_default=sa.func.now(),

@@ -7,8 +7,8 @@ pipeline.  Task 12 revises it to be fully AI-free and round-scoped:
 - ``process_answer_script`` runs in the job worker.  It reads MCQ answers
   with a **pure OMR pass** (Pillow + OpenCV ink-density measurement against
   the printed question sheet's ``layout_metadata``) and open-ended answers
-  with local **TrOCR** (``microsoft/trocr-base-handwritten`` via Hugging Face
-  ``transformers``).  No LLM call is involved anywhere in this flow.
+  with local **Tesseract OCR** (``pytesseract``).  No LLM call is involved
+  anywhere in this flow.
 - The resulting ``answer_segments`` rows are round-scoped; the round's status
   (and the interview's, which mirrors the active round) becomes SEGMENTED /
   SEGMENTATION_UNCERTAIN — alignment is never guessed, and an MCQ with more

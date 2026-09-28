@@ -17,14 +17,73 @@ from typing import Any
 from docx import Document
 from docx.shared import Pt, Inches, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.enum.table import WD_ROW_HEIGHT_RULE
 
 from app.config import settings
+from app.services.file_store import persist_record
 
 logger = logging.getLogger(__name__)
 
 DAYS = 10
-CANDIDATES_PER_DAY = 5
+CANDIDATES_PER_DAY = 10
 QUESTION_COUNT = 10
+
+# ---------------------------------------------------------------------------
+# Part D — shared multi-candidate answer sheet layout
+#
+# Fixed print coordinates for the printable template (A4 portrait, 0.8"
+# margins).  The scanner crops each slot's ID box and answers box using
+# these normalized (0..1) page coordinates.  Keep template generation and
+# this layout in sync — they are defined together here on purpose.
+# ---------------------------------------------------------------------------
+
+_PAGE_W_IN = 8.27   # A4 width
+_PAGE_H_IN = 11.69  # A4 height
+_MARGIN_IN = 0.8
+_HEADER_H_IN = 1.5  # title + instructions above the slot table
+_ID_COL_W_IN = 2.0
+
+_CONTENT_X0 = _MARGIN_IN
+_CONTENT_W = _PAGE_W_IN - 2 * _MARGIN_IN
+_SLOTS_Y0 = _MARGIN_IN + _HEADER_H_IN
+_SLOTS_H_TOTAL = (_PAGE_H_IN - 2 * _MARGIN_IN) - _HEADER_H_IN
+_SLOT_H = _SLOTS_H_TOTAL / CANDIDATES_PER_DAY
+
+
+def _norm_box(x_in: float, y_in: float, w_in: float, h_in: float) -> dict:
+    """Convert an inch box on the page to normalized 0..1 coordinates."""
+    return {
+        "x": round(x_in / _PAGE_W_IN, 5),
+        "y": round(y_in / _PAGE_H_IN, 5),
+        "w": round(w_in / _PAGE_W_IN, 5),
+        "h": round(h_in / _PAGE_H_IN, 5),
+    }
+
+
+def _build_answer_sheet_layout() -> dict:
+    slots = []
+    for i in range(CANDIDATES_PER_DAY):
+        slot_y = _SLOTS_Y0 + i * _SLOT_H
+        inner_y = slot_y + 0.12
+        inner_h = _SLOT_H - 0.24
+        slots.append({
+            "index": i,
+            "id_box": _norm_box(_CONTENT_X0, inner_y, _ID_COL_W_IN, inner_h),
+            "answers_box": _norm_box(
+                _CONTENT_X0 + _ID_COL_W_IN,
+                inner_y,
+                _CONTENT_W - _ID_COL_W_IN,
+                inner_h,
+            ),
+        })
+    return {
+        "page": {"width_in": _PAGE_W_IN, "height_in": _PAGE_H_IN},
+        "slot_count": CANDIDATES_PER_DAY,
+        "slots": slots,
+    }
+
+
+ANSWER_SHEET_LAYOUT = _build_answer_sheet_layout()
 
 
 def _load_dataset() -> dict[str, list[dict[str, Any]]]:
@@ -153,8 +212,9 @@ def _get_day_correct_answers(day: int) -> list[str]:
 def generate_question_paper(day: int, filepath: str | None = None) -> str:
     """Generate a printable MCQ question paper DOCX for a specific day.
 
-    Contains 10 questions with checkbox options, blank answer lines,
-    and 5 candidate ID sections. Returns the file path.
+    Contains 10 questions with checkbox options and blank answer lines.
+    The shared multi-candidate answer sheet is a separate document
+    (generate_answer_sheet). Returns the file path.
     """
     questions = _get_day_questions(day)
 
@@ -222,28 +282,6 @@ def generate_question_paper(day: int, filepath: str | None = None) -> str:
 
         doc.add_paragraph()
 
-    # Candidate sections (5 candidates) - using Candidate ID instead of name
-    doc.add_page_break()
-    header = doc.add_heading("Candidate Answer Sheet", level=1)
-    header.alignment = WD_ALIGN_PARAGRAPH.CENTER
-
-    for cand_idx in range(CANDIDATES_PER_DAY):
-        cand_para = doc.add_paragraph()
-        cand_para.paragraph_format.space_before = Pt(12)
-        cand_para.paragraph_format.space_after = Pt(6)
-        cand_run = cand_para.add_run(f"Candidate ID: {cand_idx + 1:03d} _______________")
-        cand_run.bold = True
-        cand_run.font.size = Pt(12)
-
-        for q_num in range(1, QUESTION_COUNT + 1):
-            ans_para = doc.add_paragraph()
-            ans_para.paragraph_format.left_indent = Inches(0.5)
-            ans_para.paragraph_format.space_after = Pt(2)
-            ans_para.add_run(f"Q{q_num}: ").bold = True
-            ans_para.add_run("_" * 20).font.color.rgb = RGBColor(0xCB, 0xD5, 0xE1)
-            ans_para.add_run(" (Write correct option only)").font.size = Pt(8)
-            ans_para.add_run().italic = True
-
     doc.save(filepath)
     logger.info("Generated question paper for day %d -> %s", day, filepath)
     return filepath
@@ -304,32 +342,81 @@ def generate_question_paper_docx(day: int) -> bytes:
 
         doc.add_paragraph()
 
-    # Candidate sections (5 candidates) - using Candidate ID instead of name
-    doc.add_page_break()
-    header = doc.add_heading("Candidate Answer Sheet", level=1)
-    header.alignment = WD_ALIGN_PARAGRAPH.CENTER
-
-    for cand_idx in range(CANDIDATES_PER_DAY):
-        cand_para = doc.add_paragraph()
-        cand_para.paragraph_format.space_before = Pt(12)
-        cand_para.paragraph_format.space_after = Pt(6)
-        cand_run = cand_para.add_run(f"Candidate ID: {cand_idx + 1:03d} _______________")
-        cand_run.bold = True
-        cand_run.font.size = Pt(12)
-
-        for q_num in range(1, QUESTION_COUNT + 1):
-            ans_para = doc.add_paragraph()
-            ans_para.paragraph_format.left_indent = Inches(0.5)
-            ans_para.paragraph_format.space_after = Pt(2)
-            ans_para.add_run(f"Q{q_num}: ").bold = True
-            ans_para.add_run("_" * 20).font.color.rgb = RGBColor(0xCB, 0xD5, 0xE1)
-            ans_para.add_run(" (Write correct option only)").font.size = Pt(8)
-            ans_para.add_run().italic = True
-
     buf = __import__("io").BytesIO()
     doc.save(buf)
     buf.seek(0)
     return buf.getvalue()
+
+
+def generate_answer_sheet(day: int, filepath: str | None = None) -> str:
+    """Generate the printable shared multi-candidate answer sheet DOCX.
+
+    One sheet per day (not per candidate): a fixed grid of 10 bounded
+    candidate slots, each with a Candidate ID box and one freeform answers
+    line ("e.g. 1.a, 2.c, 3.b").  Slot print coordinates are defined by
+    ANSWER_SHEET_LAYOUT (same module) and used by mcq_service to crop the
+    scanned sheet.  Returns the file path.
+    """
+    if filepath is None:
+        os.makedirs(settings.MCQ_STORAGE_DIR, exist_ok=True)
+        filepath = os.path.join(settings.MCQ_STORAGE_DIR, f"mcq_answer_sheet_day_{day}.docx")
+
+    doc = Document()
+    _apply_paper_base(doc)
+
+    title = doc.add_heading("VLOOKUP BUISNESS SOLUTION PTV LTD", level=0)
+    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    title_run = title.runs[0]
+    title_run.font.size = Pt(16)
+    title_run.bold = True
+
+    subheading = doc.add_heading(f"DAY {day} — CANDIDATE ANSWER SHEET", level=1)
+    subheading.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    subheading_run = subheading.runs[0]
+    subheading_run.font.size = Pt(14)
+    subheading_run.bold = True
+
+    instr = doc.add_paragraph()
+    instr.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    instr_run = instr.add_run(
+        "Write your Candidate ID and all 10 answers on the single line in your "
+        "row, e.g. 1.a, 2.c, 3.b, 4.d, 5.a — letters A–D only. "
+        "Do not write outside the box."
+    )
+    instr_run.italic = True
+    instr_run.font.size = Pt(9)
+
+    table = doc.add_table(rows=CANDIDATES_PER_DAY, cols=2)
+    table.style = "Table Grid"
+
+    slot_h_inches = _SLOT_H
+    for i, row in enumerate(table.rows):
+        row.height = Inches(slot_h_inches)
+        row.height_rule = WD_ROW_HEIGHT_RULE.EXACTLY
+        id_cell, ans_cell = row.cells
+        id_cell.width = Inches(_ID_COL_W_IN)
+        ans_cell.width = Inches(_CONTENT_W - _ID_COL_W_IN)
+
+        p_id = id_cell.paragraphs[0]
+        id_label = p_id.add_run(f"Candidate ID: ________")
+        id_label.bold = True
+        id_label.font.size = Pt(11)
+
+        p_ans = ans_cell.paragraphs[0]
+        ans_label = p_ans.add_run("Answers:  1.__  2.__  3.__  4.__  5.__  6.__  7.__  8.__  9.__  10.__")
+        ans_label.font.size = Pt(9)
+        ans_label.font.color.rgb = RGBColor(0xCB, 0xD5, 0xE1)
+
+    doc.save(filepath)
+    logger.info("Generated answer sheet for day %d -> %s", day, filepath)
+    return filepath
+
+
+def generate_answer_sheet_docx(day: int) -> bytes:
+    """Generate the shared answer sheet DOCX as bytes for in-memory download."""
+    filepath = generate_answer_sheet(day)
+    with open(filepath, "rb") as f:
+        return f.read()
 
 
 def save_question_paper_to_db(day: int, session) -> str:

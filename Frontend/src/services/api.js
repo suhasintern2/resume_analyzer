@@ -344,9 +344,11 @@ export async function downloadMCQPaper(day) {
 }
 
 /**
- * Upload completed MCQ answer sheets for a specific day.
- * files: FileList or File[] (text files with candidate answers)
- * Returns { success, day, scores, message }
+ * Upload completed shared MCQ answer sheets for a specific day.
+ * files: FileList or File[] (PDF/PNG/JPG scans of the shared answer sheet)
+ * Returns { success, day, answer_key_sequence, max_score,
+ *           rows: [{ result_id, candidate_id, answer_sequence, score,
+ *                    max_score, percentage, row_status }], message }
  */
 export async function uploadMCQAnswers(day, files) {
   const formData = new FormData();
@@ -361,11 +363,41 @@ export async function uploadMCQAnswers(day, files) {
 }
 
 /**
- * Get the correct answer key for a specific day.
- * Returns { day, questions, correct_answers, total_questions }
+ * Get the correct answer key + stored result rows for a specific day.
+ * Returns { day, questions, correct_answers, total_questions,
+ *           results: MCQResultRow[] }
  */
 export async function getMCQResults(day) {
   const response = await fetch(`/api/mcq/day/${day}/results`);
+  return _json(response);
+}
+
+/**
+ * Download the shared multi-candidate answer sheet DOCX for a day.
+ * Returns a Blob.
+ */
+export async function downloadMCQAnswerSheet(day) {
+  const response = await fetch(`/api/mcq/day/${day}/download-answer-sheet`);
+  if (!response.ok) {
+    throw new Error(`Failed to download answer sheet (${response.status})`);
+  }
+  return response.blob();
+}
+
+/**
+ * Manually correct one result row's candidate ID and/or answer sequence.
+ * answerSequence may contain A-D letters, '-' (blank) or '!' (ambiguous).
+ * Returns { success, result }
+ */
+export async function patchMCQResult(resultId, { candidateId, answerSequence }) {
+  const payload = {};
+  if (candidateId !== undefined) payload.candidate_id = candidateId;
+  if (answerSequence !== undefined) payload.answer_sequence = answerSequence;
+  const response = await fetch(`/api/mcq/results/${resultId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
   return _json(response);
 }
 

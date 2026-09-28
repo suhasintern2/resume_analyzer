@@ -45,13 +45,7 @@ class Settings:
         os.getenv("ANSWER_SCRIPT_MAX_FILE_SIZE_MB", "10")
     )
 
-    # Task 12 — fully AI-free answer-script pipeline (OMR + TrOCR).
-    # TrOCR model for handwriting recognition (Microsoft, via Hugging Face transformers).
-    # Model choices: "microsoft/trocr-base-handwritten" (faster) or
-    #                "microsoft/trocr-large-handwritten" (higher accuracy, more VRAM).
-    TROCR_MODEL: str = os.getenv("TROCR_MODEL", "microsoft/trocr-base-handwritten")
-    # Device: "cpu" or "cuda" (if available).
-    TROCR_DEVICE: str = os.getenv("TROCR_DEVICE", "cpu")
+    # Task 12 — fully AI-free answer-script pipeline (OMR + Tesseract OCR).
     # Working DPI scanned answer pages are rasterized to before OMR detection.
     OMR_DPI: int = int(os.getenv("OMR_DPI", "200"))
     # A checkbox interior is "marked" when its dark-pixel ratio >= threshold.
@@ -71,6 +65,12 @@ class Settings:
     WORKER_POLL_INTERVAL_SECONDS: float = float(
         os.getenv("WORKER_POLL_INTERVAL_SECONDS", "2")
     )
+
+    # Task 8 — startup recovery: skip for faster startup during development
+    SKIP_STARTUP_RECOVERY: bool = os.getenv("SKIP_STARTUP_RECOVERY", "false").lower() == "true"
+
+    # Business timezone for MCQ daily sets (Part B of spec)
+    BUSINESS_TIMEZONE: str = os.getenv("BUSINESS_TIMEZONE", "Europe/London")
 
     # Task 10 — Deterministic evaluator weights (must sum to 1.0)
     KEYWORD_WEIGHT: float = float(os.getenv("KEYWORD_WEIGHT", "0.25"))

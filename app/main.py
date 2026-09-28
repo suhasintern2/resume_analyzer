@@ -26,7 +26,11 @@ async def lifespan(app: FastAPI):
     """Boot sequence: crash recovery, then the background worker loop."""
     # 1) Startup recovery — reset any in-flight rows left by a previous
     #    process crash back to QUEUED so the worker re-picks them up.
-    await asyncio.to_thread(run_startup_recovery)
+    #    Skip when SKIP_STARTUP_RECOVERY=true for faster startup (e.g. development).
+    if not settings.SKIP_STARTUP_RECOVERY:
+        await asyncio.to_thread(run_startup_recovery)
+    else:
+        logger.info("Skipping startup recovery for faster startup")
 
     # 2) Background worker (Task 8) — a lightweight polling loop; skipped when
     #    WORKER_ENABLED=false (e.g. under tests).

@@ -1,6 +1,7 @@
 import os
 import time
 import logging
+from datetime import datetime
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends
 from fastapi.responses import Response
 from decimal import Decimal
@@ -42,11 +43,13 @@ from app.services.mcq_bank import (
     _get_day_correct_answers,
     generate_question_paper,
     generate_mcq_answer_key,
+    generate_answer_sheet,
     score_answer_sheet,
     parse_uploaded_answer_sheet,
     get_available_days,
     get_day_status,
 )
+from app.services import mcq_service
 from app.models.schemas import (
     GenerateResponse,
     InterviewResult,
@@ -67,6 +70,10 @@ from app.models.schemas import (
     MCQScoreResponse,
     MCQUploadResponse,
     MCQDownloadResponse,
+    MCQResultsResponse,
+    MCQResultUpdateRequest,
+    MCQSheetUploadResponse,
+    MCQUploadRow,
 )
 from app.config import settings
 
@@ -913,52 +920,167 @@ def download_mcq_paper(day: int):
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.post("/mcq/day/{day}/upload", response_model=MCQUploadResponse)
-def upload_mcq_answers(day: int, files: list[UploadFile] = File(...)):
-    """Upload completed MCQ answer sheets and get scores.
+@router.post("/mcq/day/{day}/upload", response_model=MCQSheetUploadResponse)
+def upload_mcq_answers(day: int, files: list[UploadFile] = File(...), session: Session = Depends(get_db)):
+    """Upload completed shared answer sheets (image only) and score them.
 
-    Each file is parsed to extract candidate names and their answer
-    sequences. Answers are compared against the correct answer key
-    for the day and individual scores are returned.
+    Each sheet is deskewed, cropped to the fixed candidate slots, and the
+    short handwritten lines ("1.a, 2.c, ...") are read with Tesseract —
+    no OMR bubble detection.  Parsed sequences are scored positionally
+    against today's daily_mcq_sets.answer_key_sequence (the day number is
+    accepted for routing/UX; the active set is today's business date).
     """
     if day < 1 or day > 10:
         raise HTTPException(status_code=400, detail="Day must be 1-10.")
 
-    correct_answers = _get_day_correct_answers(day)
-    all_candidate_answers: dict[str, list[str]] = {}
+    if not files:
+        raise HTTPException(status_code=400, detail="No answer sheet files were uploaded.")
+
+    all_rows: list[MCQUploadRow] = []
+    answer_key = ""
+    max_score = 0
 
     for upload in files:
-        content = upload.file.read().decode("utf-8", errors="ignore")
-        parsed = parse_uploaded_answer_sheet(content)
-        for name, answers in parsed["candidates"].items():
-            all_candidate_answers[name] = answers
+        ext = os.path.splitext(upload.filename or "")[1].lower()
+        if ext not in [".jpg", ".jpeg", ".png"]:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported file type '{ext}'. Supported types: JPG, JPEG, PNG"
+            )
 
-    if not all_candidate_answers:
-        raise HTTPException(status_code=400, detail="No candidate answers found.")
+        content = upload.file.read()
+        max_size_bytes = settings.ANSWER_SCRIPT_MAX_FILE_SIZE_MB * 1024 * 1024
+        if len(content) > max_size_bytes:
+            raise HTTPException(
+                status_code=400,
+                detail=f"File size exceeds {settings.ANSWER_SCRIPT_MAX_FILE_SIZE_MB}MB limit"
+            )
 
-    scores = score_answer_sheet(day, correct_answers, all_candidate_answers)
+        temp_filename = f"temp_mcq_upload_{datetime.utcnow().timestamp()}_{upload.filename}"
+        temp_path = os.path.join("uploads", temp_filename)
+        os.makedirs("uploads", exist_ok=True)
+        with open(temp_path, "wb") as f:
+            f.write(content)
 
-    return MCQUploadResponse(
+        try:
+            result = mcq_service.process_mcq_answer_sheet_upload(
+                session=session,
+                file_path=temp_path,
+                content=content,
+                ext=ext,
+                filename=upload.filename or "unknown",
+            )
+
+            if not result["success"]:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Failed to process answer sheet: {result.get('error', 'Unknown error')}"
+                )
+
+            answer_key = result["answer_key_sequence"]
+            max_score = result["max_score"]
+            for row in result["results"]:
+                all_rows.append(MCQUploadRow(
+                    result_id=row["result_id"],
+                    slot_index=row["slot_index"],
+                    candidate_id=row["candidate_id"] or "",
+                    answer_sequence=row["answer_sequence"],
+                    score=row["score"],
+                    max_score=max_score,
+                    percentage=row["percentage"],
+                    row_status=row["row_status"],
+                ))
+
+        finally:
+            if os.path.exists(temp_path):
+                try:
+                    os.remove(temp_path)
+                except OSError:
+                    pass  # Ignore cleanup errors
+
+    if not all_rows:
+        raise HTTPException(status_code=400, detail="No valid answer sheets processed.")
+
+    return MCQSheetUploadResponse(
         success=True,
         day=day,
-        scores=scores["candidates"],
-        message=f"Scored {len(all_candidate_answers)} candidate(s) for day {day}.",
+        answer_key_sequence=answer_key,
+        max_score=max_score,
+        rows=all_rows,
+        message=f"Processed {len(all_rows)} candidate row(s) for day {day}.",
     )
 
 
-@router.get("/mcq/day/{day}/results")
-def get_mcq_results(day: int):
-    """Get the correct answer key for a specific day."""
+@router.get("/mcq/day/{day}/results", response_model=MCQResultsResponse)
+def get_mcq_results(day: int, session: Session = Depends(get_db)):
+    """Answer key + stored result rows for a specific day.
+
+    ``correct_answers`` comes from the day's paper (legacy display);
+    ``results`` comes from daily_mcq_results (scored OCR rows with
+    candidate_id, row_status, raw OCR text and per-question detail).
+    """
     if day < 1 or day > 10:
         raise HTTPException(status_code=400, detail="Day must be 1-10.")
     questions = _get_day_questions(day)
     correct = _get_day_correct_answers(day)
-    return {
-        "day": day,
-        "questions": [q["question"] for q in questions],
-        "correct_answers": correct,
-        "total_questions": len(correct),
-    }
+    try:
+        result_rows = mcq_service.get_mcq_results_for_date(session)
+    except Exception as e:
+        logger.warning("Could not load MCQ results rows: %s", e)
+        result_rows = []
+    return MCQResultsResponse(
+        day=day,
+        questions=[q["question"] for q in questions],
+        correct_answers=correct,
+        total_questions=len(correct),
+        results=result_rows,
+    )
+
+
+@router.patch("/mcq/results/{result_id}")
+def update_mcq_result(
+    result_id: int,
+    body: MCQResultUpdateRequest,
+    session: Session = Depends(get_db),
+):
+    """Manual correction of one result row: candidate_id and/or answer_sequence.
+
+    Re-scores positionally against the row's answer key.  Raw OCR text is
+    preserved for audit; the correction is applied on top of it.
+    """
+    try:
+        updated = mcq_service.update_mcq_result(
+            session,
+            result_id=result_id,
+            candidate_id=body.candidate_id,
+            answer_sequence=body.answer_sequence,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Result row not found.")
+    return {"success": True, "result": updated}
+
+
+@router.get("/mcq/day/{day}/download-answer-sheet")
+def download_mcq_answer_sheet(day: int):
+    """Download the shared multi-candidate answer sheet DOCX for a day."""
+    if day < 1 or day > 10:
+        raise HTTPException(status_code=400, detail="Day must be 1-10.")
+    try:
+        filepath = generate_answer_sheet(day)
+        with open(filepath, "rb") as f:
+            content = f.read()
+        return Response(
+            content=content,
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            headers={
+                "Content-Disposition": f'attachment; filename="VlookUp_MCQ_Answer_Sheet_Day_{day}.docx"'
+            },
+        )
+    except Exception as e:
+        logger.error("Answer sheet generation failed for day %d: %s", day, e)
+        raise HTTPException(status_code=500, detail="Failed to generate answer sheet.")
 
 
 @router.get("/mcq/day/{day}/download-answer-key")
